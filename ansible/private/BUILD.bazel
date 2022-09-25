@@ -1,0 +1,123 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python/pip_install:requirements.bzl", "compile_pip_requirements")
+load("//ansible:toolchain.bzl", "current_ansible_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+current_ansible_toolchain(
+    name = "current_ansible",
+    lib = "ansible",
+    tags = ["manual"],
+)
+
+current_ansible_toolchain(
+    name = "current_ansible_core",
+    lib = "ansible_core",
+    tags = ["manual"],
+)
+
+current_ansible_toolchain(
+    name = "current_ansible_lint",
+    lib = "ansible_lint",
+    tags = ["manual"],
+)
+
+copy_file(
+    name = "ansible_playbook_src",
+    src = "ansible_setup_py_script.py",
+    out = "ansible-playbook.py",
+)
+
+py_binary(
+    name = "ansible-playbook",
+    srcs = ["ansible-playbook.py"],
+    deps = [
+        ":current_ansible",
+        ":current_ansible_core",
+    ],
+)
+
+copy_file(
+    name = "ansible_vault_src",
+    src = "ansible_setup_py_script.py",
+    out = "ansible-vault.py",
+)
+
+py_binary(
+    name = "ansible-vault",
+    srcs = ["ansible-vault.py"],
+    deps = [
+        ":current_ansible",
+        ":current_ansible_core",
+    ],
+)
+
+write_file(
+    name = "ansible_lint_src",
+    out = "ansible-lint.py",
+    content = """\
+# -*- coding: utf-8 -*-
+import os
+import re
+import sys
+from ansiblelint.__main__ import _run_cli_entrypoint
+if __name__ == '__main__':
+    if "BUILD_WORKING_DIRECTORY" in os.environ:
+        os.chdir(os.environ["BUILD_WORKING_DIRECTORY"])
+    sys.argv[0] = re.sub(r'(-script\\.pyw|\\.exe)?$', '', sys.argv[0])
+    sys.exit(_run_cli_entrypoint())
+""".splitlines(),
+)
+
+py_binary(
+    name = "ansible-lint",
+    srcs = ["ansible-lint.py"],
+    deps = [
+        ":current_ansible_lint",
+    ],
+)
+
+py_binary(
+    name = "ansible_launcher",
+    srcs = [
+        "ansible-playbook.py",
+        "ansible-vault.py",
+        "ansible_launcher.py",
+    ],
+    deps = [
+        ":current_ansible",
+        ":current_ansible_core",
+    ],
+)
+
+py_binary(
+    name = "ansible_lint_process_wrapper",
+    srcs = [
+        "ansible_lint_process_wrapper.py",
+    ],
+    deps = [
+        ":current_ansible",
+        ":current_ansible_core",
+        ":current_ansible_lint",
+    ],
+)
+
+bzl_library(
+    name = "bzl_lib",
+    srcs = glob(["*.bzl"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//ansible/private/utils:bzl_lib",
+    ],
+)
+
+compile_pip_requirements(
+    name = "requirements",
+    extra_args = ["--allow-unsafe"],
+    requirements_in = "//ansible:requirements.in",
+    requirements_txt = "//ansible:requirements.txt",
+    tags = ["manual"],
+)

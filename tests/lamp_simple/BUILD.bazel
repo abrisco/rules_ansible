@@ -1,0 +1,15 @@
+load("@rules_ansible//ansible:defs.bzl", "ansible_lint_test", "ansible_playbook")
+
+ansible_playbook(
+    name = "lamp_simple",
+    inventory = ["hosts"] + glob([
+        "group_vars/**",
+    ]),
+    playbook = "site.yml",
+    roles = glob(["roles/**"]),
+)
+
+ansible_lint_test(
+    name = "lamp_simple_lint_test",
+    playbook = ":lamp_simple",
+)

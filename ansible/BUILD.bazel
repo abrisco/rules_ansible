@@ -1,0 +1,39 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+exports_files(
+    [
+        "requirements.in",
+        "requirements.txt",
+        "defs.bzl",
+        "ansible.cfg",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "bzl_lib",
+    srcs = glob(["*.bzl"]) + [
+        "@rules_python//python:bzl",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//ansible/private:bzl_lib",
+    ],
+)
+
+label_flag(
+    name = "config",
+    build_setting_default = ":ansible.cfg",
+    visibility = ["//visibility:public"],
+)
+
+toolchain_type(
+    name = "toolchain_type",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "lint",
+    actual = "//ansible/private:ansible-lint",
+    tags = ["manual"],
+)
