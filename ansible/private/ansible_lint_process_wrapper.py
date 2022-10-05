@@ -112,7 +112,6 @@ def main() -> None:
         for ext in ["", ".exe"]:
             interpreter = tmp_path / ("python3" + ext)
             interpreter.symlink_to(sys.executable)
-            interpreter.chmod(0o700)
 
         env = dict(os.environ)
         sys_path = str(tmp_path) + os.pathsep + env.get("PATH", "")
