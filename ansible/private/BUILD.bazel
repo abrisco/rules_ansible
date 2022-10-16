@@ -5,24 +5,25 @@ load("@rules_python//python:defs.bzl", "py_binary")
 load("@rules_python//python/pip_install:requirements.bzl", "compile_pip_requirements")
 load("//ansible:toolchain.bzl", "current_ansible_toolchain")
 
-package(default_visibility = ["//visibility:public"])
-
 current_ansible_toolchain(
     name = "current_ansible",
     lib = "ansible",
     tags = ["manual"],
+    visibility = ["//visibility:public"],
 )
 
 current_ansible_toolchain(
     name = "current_ansible_core",
     lib = "ansible_core",
     tags = ["manual"],
+    visibility = ["//visibility:public"],
 )
 
 current_ansible_toolchain(
     name = "current_ansible_lint",
     lib = "ansible_lint",
     tags = ["manual"],
+    visibility = ["//visibility:public"],
 )
 
 copy_file(
@@ -34,6 +35,7 @@ copy_file(
 py_binary(
     name = "ansible-playbook",
     srcs = ["ansible-playbook.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":current_ansible",
         ":current_ansible_core",
@@ -49,6 +51,7 @@ copy_file(
 py_binary(
     name = "ansible-vault",
     srcs = ["ansible-vault.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":current_ansible",
         ":current_ansible_core",
@@ -73,20 +76,13 @@ if __name__ == '__main__':
 )
 
 py_binary(
-    name = "ansible-lint",
-    srcs = ["ansible-lint.py"],
-    deps = [
-        ":current_ansible_lint",
-    ],
-)
-
-py_binary(
     name = "ansible_launcher",
     srcs = [
         "ansible-playbook.py",
         "ansible-vault.py",
         "ansible_launcher.py",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":current_ansible",
         ":current_ansible_core",
@@ -99,6 +95,7 @@ py_binary(
     srcs = [
         "ansible_lint_process_wrapper.py",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":current_ansible",
         ":current_ansible_core",
@@ -106,10 +103,19 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "ansible_lint_runner",
+    srcs = ["ansible_lint_runner.py"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ansible_lint_process_wrapper",
+    ],
+)
+
 bzl_library(
     name = "bzl_lib",
     srcs = glob(["*.bzl"]),
-    visibility = ["//visibility:public"],
+    visibility = ["//ansible:__pkg__"],
     deps = [
         "//ansible/private/utils:bzl_lib",
     ],

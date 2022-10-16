@@ -6,11 +6,12 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Iterable
 
 from ansiblelint.__main__ import _run_cli_entrypoint
 
 ANSIBLE_LINT_ARGS_FILE = "ANSIBLE_LINT_ARGS_FILE"
+ANSIBLE_LINT_ENTRY_POINT = "ANSIBLE_LINT_ENTRY_POINT"
 
 
 def _find_args_file() -> Optional[Path]:
@@ -84,14 +85,7 @@ def write_entrypoint(path: Path, content: str) -> None:
     path.chmod(0o700)
 
 
-def main() -> None:
-
-    args_file = _find_args_file()
-    argv = None
-    if args_file:
-        argv = args_file.read_text(encoding="utf-8").splitlines()
-    args = parse_args(argv)
-
+def lint_main(capture_output: bool=True, args: Iterable[str] = []) -> None:
     # Create a directory to append to `PATH`
     dir_prefix = os.environ.get("TEST_TMPDIR", None)
     with tempfile.TemporaryDirectory(dir=dir_prefix) as tmp_dir:
@@ -118,7 +112,7 @@ def main() -> None:
         env.update(
             {
                 "HOME": tmp_dir,
-                "ANSIBLE_LINT_ENTRY_POINT": __file__,
+                ANSIBLE_LINT_ENTRY_POINT: __file__,
                 "PATH": sys_path,
             }
         )
@@ -126,32 +120,43 @@ def main() -> None:
         lint_args = [
             sys.executable,
             __file__,
-        ] + args.lint_args
+        ] + args
 
-        proc = subprocess.run(
+        return subprocess.run(
             lint_args,
             env=env,
             check=False,
-            capture_output=True,
+            capture_output=capture_output,
         )
 
-        if proc.returncode:
-            stdout = proc.stdout.decode(encoding="utf-8")
-            stderr = proc.stderr.decode(encoding="utf-8")
 
-            # The first lint argument is always the path to the playbook
-            playbook = Path(args.lint_args[0])
-            if playbook.exists():
-                abs_parent = playbook.resolve().parent
-                stdout = stdout.replace(str(abs_parent), "{PLAYBOOK_DIR}")
-                stderr = stderr.replace(str(abs_parent), "{PLAYBOOK_DIR}")
+def main() -> None:
 
-            print(stdout, file=sys.stdout)
-            print(stderr, file=sys.stderr)
-            sys.exit(proc.returncode)
+    args_file = _find_args_file()
+    argv = None
+    if args_file:
+        argv = args_file.read_text(encoding="utf-8").splitlines()
+    args = parse_args(argv)
 
-        if args.output:
-            args.output.write_bytes(b"")
+    proc = lint_main(args = args.lint_args)
+
+    if proc.returncode:
+        stdout = proc.stdout.decode(encoding="utf-8")
+        stderr = proc.stderr.decode(encoding="utf-8")
+
+        # The first lint argument is always the path to the playbook
+        playbook = Path(args.lint_args[0])
+        if playbook.exists():
+            abs_parent = playbook.resolve().parent
+            stdout = stdout.replace(str(abs_parent), "{PLAYBOOK_DIR}")
+            stderr = stderr.replace(str(abs_parent), "{PLAYBOOK_DIR}")
+
+        print(stdout, file=sys.stdout)
+        print(stderr, file=sys.stderr)
+        sys.exit(proc.returncode)
+
+    if args.output:
+        args.output.write_bytes(b"")
 
 
 def ansible_main() -> None:
@@ -159,7 +164,7 @@ def ansible_main() -> None:
 
 
 if __name__ == "__main__":
-    if os.environ.get("ANSIBLE_LINT_ENTRY_POINT") == __file__:
+    if os.environ.get(ANSIBLE_LINT_ENTRY_POINT) == __file__:
         ansible_main()
     else:
         main()

@@ -34,6 +34,6 @@ toolchain_type(
 
 alias(
     name = "lint",
-    actual = "//ansible/private:ansible-lint",
+    actual = "//ansible/private:ansible_lint_runner",
     tags = ["manual"],
 )
