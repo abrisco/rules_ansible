@@ -37,12 +37,9 @@ def _ansible_impl(ctx):
         vault_files.append(copy)
 
     hosts_files = []
-    inventory = []
     for src in ctx.files.inventory:
         if src.basename == "hosts":
             hosts_files.append(src)
-        else:
-            inventory.append(src)
 
     if len(hosts_files) != 1:
         fail("Ansible playbooks are expected to have 1 hosts file available. Instead {} contained {}".format(
@@ -59,9 +56,10 @@ def _ansible_impl(ctx):
         "ANSIBLE_BZL_PACKAGE": ctx.label.package,
         "ANSIBLE_BZL_PLAYBOOK": ctx.attr.playbook.label.name,
         "ANSIBLE_BZL_VAULT_FILES": json.encode([file.basename for file in vault_files]),
+        "ANSIBLE_BZL_WORKSPACE_NAME": ctx.workspace_name,
     }
 
-    data = [ctx.file.playbook] + vault_files + inventory + ctx.files.roles
+    data = [ctx.file.playbook] + vault_files + ctx.files.inventory + ctx.files.roles
 
     if ctx.attr.config:
         env.update({
@@ -75,7 +73,7 @@ def _ansible_impl(ctx):
         AnsiblePlaybookInfo(
             playbook = ctx.file.playbook,
             hosts = hosts_file,
-            inventory = depset(inventory),
+            inventory = depset(ctx.files.inventory),
             roles = depset(ctx.files.roles),
         ),
         DefaultInfo(

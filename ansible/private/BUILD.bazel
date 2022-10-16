@@ -86,6 +86,7 @@ py_binary(
     deps = [
         ":current_ansible",
         ":current_ansible_core",
+        "@rules_python//python/runfiles",
     ],
 )
 
