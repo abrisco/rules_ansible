@@ -3,7 +3,6 @@
 import os
 import sys
 
-
 import rules_ansible.ansible.private.ansible_lint_process_wrapper as ansible_lint
 
 
@@ -18,7 +17,7 @@ def main() -> None:
 
     os.chdir(working_dir)
 
-    proc = ansible_lint.lint_main(capture_output=False, args = sys.argv[1:])
+    proc = ansible_lint.lint_main(capture_output=False, args=sys.argv[1:])
 
     sys.exit(proc.returncode)
 

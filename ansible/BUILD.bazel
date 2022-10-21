@@ -6,6 +6,7 @@ exports_files(
         "requirements.txt",
         "defs.bzl",
         "ansible.cfg",
+        ".ansible-lint.yaml",
     ],
     visibility = ["//visibility:public"],
 )
@@ -24,6 +25,12 @@ bzl_library(
 label_flag(
     name = "config",
     build_setting_default = ":ansible.cfg",
+    visibility = ["//visibility:public"],
+)
+
+label_flag(
+    name = "lint_config",
+    build_setting_default = ":.ansible-lint.yaml",
     visibility = ["//visibility:public"],
 )
 

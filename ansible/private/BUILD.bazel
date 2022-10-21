@@ -100,6 +100,7 @@ py_binary(
         ":current_ansible",
         ":current_ansible_core",
         ":current_ansible_lint",
+        "@rules_python//python/runfiles",
     ],
 )
 
