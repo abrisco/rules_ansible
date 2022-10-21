@@ -55,7 +55,7 @@ def _ansible_impl(ctx):
         "ANSIBLE_BZL_LAUNCHER_NAME": ctx.label.name,
         "ANSIBLE_BZL_PACKAGE": ctx.label.package,
         "ANSIBLE_BZL_PLAYBOOK": ctx.attr.playbook.label.name,
-        "ANSIBLE_BZL_VAULT_FILES": json.encode([file.basename for file in vault_files]),
+        "ANSIBLE_BZL_VAULT_FILES": json.encode([file.short_path for file in vault_files]),
         "ANSIBLE_BZL_WORKSPACE_NAME": ctx.workspace_name,
     }
 
