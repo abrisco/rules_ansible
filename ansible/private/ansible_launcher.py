@@ -93,9 +93,9 @@ def get_target_package_dir() -> Path:
 
 
 def get_bazel_workspace_root() -> Path:
-    env = os.getenv("BUILD_WORKING_DIRECTORY")
+    env = os.getenv("BUILD_WORKSPACE_DIRECTORY")
     if not env:
-        raise EnvironmentError("BUILD_WORKING_DIRECTORY is not set")
+        raise EnvironmentError("BUILD_WORKSPACE_DIRECTORY is not set")
     return Path(env)
 
 
