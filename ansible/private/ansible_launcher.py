@@ -110,7 +110,7 @@ def get_ansible_vault_files() -> List[str]:
     env = os.getenv(ENV_ANSIBLE_BZL_VAULT_FILES)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_ARGS))
-    return json.loads(env)
+    return [Path(file) for file in json.loads(env)]
 
 
 def get_ansible_config(target_package_dir: Optional[Path] = None) -> Optional[Path]:
@@ -150,11 +150,17 @@ def find_vault_key() -> Optional[Path]:
     return None
 
 
-def decrypt_keys(
-    vault_dir: Path,
+def delete_files(files: List[Path]) -> None:
+    for file in files:
+        file.unlink()
+
+
+def decrypt_vault(
     vault_files: List[Path],
     vault_key: Optional[Path],
-):
+) -> List[Path]:
+
+    environ = os.environ.copy()
 
     command = [
         get_ansible_vault_bin(),
@@ -174,22 +180,25 @@ def decrypt_keys(
         "."
     ) + ".vaultfile"
 
-    for file in vault_dir.iterdir():
-        if file.name not in vault_files:
-            continue
+    decrypted_files = []
+    try:
+        for file in vault_files:
+            # Now make sure to "install" the files by stripping the `.vaultfile` extension
+            decrypted_file = Path(str(file)[: -len(suffix)])
 
-        # Now make sure to "install" the files by stripping the `.vaultfile` extension
-        decrypted_file = Path(str(file)[: -len(suffix)])
+            vault_command = command + [
+                str(file),
+                "--output",
+                str(decrypted_file),
+            ]
 
-        vault_command = command + [
-            str(file),
-            "--output",
-            str(decrypted_file),
-        ]
+            subprocess.run(vault_command, check=True, env=environ)
+            decrypted_files.append(decrypted_file)
+    except (subprocess.CalledProcessError, KeyboardInterrupt):
+        delete_files(decrypted_files)
+        raise
 
-        environ = os.environ.copy()
-
-        subprocess.run(vault_command, check=False, env=environ)
+    return decrypted_files
 
 
 def run_ansible(
@@ -232,21 +241,20 @@ def main():
     # Check for an explicit vault key
     vault_key = find_vault_key()
 
-    playbook_dir = playbook.parent
-    vault_dir = playbook_dir / "vault"
-
     # Check for any vault files
-    decrypt_keys(
+    vault_files = decrypt_vault(
         vault_files=get_ansible_vault_files(),
-        vault_dir=vault_dir,
         vault_key=vault_key,
     )
 
-    run_ansible(
-        playbook=playbook,
-        vault_password_file=vault_key,
-        extra_args=get_ansible_args(),
-    )
+    try:
+        run_ansible(
+            playbook=playbook,
+            vault_password_file=vault_key,
+            extra_args=get_ansible_args(),
+        )
+    finally:
+        delete_files(vault_files)
 
 
 if __name__ == "__main__":
