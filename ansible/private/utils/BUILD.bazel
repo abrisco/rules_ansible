@@ -1,9 +1,12 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("@rules_python//python:defs.bzl", "py_binary")
+load(":utils.bzl", "copier_binary")
 
-py_binary(
+copier_binary(
     name = "copier",
-    srcs = ["copier.py"],
+    is_windows = select({
+        "@platforms//os:windows": True,
+        "//conditions:default": False,
+    }),
     visibility = ["//visibility:public"],
 )
 

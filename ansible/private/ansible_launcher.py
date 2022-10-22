@@ -166,7 +166,7 @@ def get_ansible_vault_files() -> List[str]:
     env = os.getenv(ENV_ANSIBLE_BZL_VAULT_FILES)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_VAULT_FILES))
-    return [Path(file) for file in json.loads(env)]
+    return [bazel_runfile_path(file) for file in json.loads(env)]
 
 
 def find_vault_key() -> Optional[Path]:
@@ -247,9 +247,8 @@ def decrypt_vault(
             ]
         )
 
-    suffix = ("." + os.environ.get(ENV_ANSIBLE_BZL_LAUNCHER_NAME, "")).rstrip(
-        "."
-    ) + ".vaultfile"
+    # This value must match that defined by the `AnsibleVaultCopier` action
+    suffix = ".vaultfile"
 
     decrypted_files = []
     try:
@@ -264,6 +263,7 @@ def decrypt_vault(
             ]
 
             subprocess.run(vault_command, check=True, env=environ)
+            decrypted_file.chmod(0o600)
             decrypted_files.append(decrypted_file)
     except (subprocess.CalledProcessError, KeyboardInterrupt):
         delete_files(decrypted_files)

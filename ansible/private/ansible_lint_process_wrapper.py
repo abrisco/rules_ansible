@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Iterable, Optional, Sequence
 
 from ansiblelint.__main__ import _run_cli_entrypoint
-from ansiblelint.file_utils import Lintable
 from ansiblelint.constants import FileType
+from ansiblelint.file_utils import Lintable
 from rules_python.python.runfiles import runfiles
 
 ANSIBLE_LINT_ARGS_FILE = "ANSIBLE_LINT_ARGS_FILE"
