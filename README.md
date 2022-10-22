@@ -76,7 +76,7 @@ A test rule for running `ansible-lint` on an Ansible playbook.
 | Name  | Description | Type | Mandatory | Default |
 | :------------- | :------------- | :------------- | :------------- | :------------- |
 | <a id="ansible_lint_test-name"></a>name |  A unique name for this target.   | <a href="https://bazel.build/concepts/labels#target-names">Name</a> | required |  |
-| <a id="ansible_lint_test-config"></a>config |  The ansible config file to use   | <a href="https://bazel.build/concepts/labels">Label</a> | optional | //ansible:config |
+| <a id="ansible_lint_test-config"></a>config |  The ansible-lint config file to use   | <a href="https://bazel.build/concepts/labels">Label</a> | optional | //ansible:lint_config |
 | <a id="ansible_lint_test-playbook"></a>playbook |  The <code>ansible_playbook</code> target to lint.   | <a href="https://bazel.build/concepts/labels">Label</a> | required |  |
 
 

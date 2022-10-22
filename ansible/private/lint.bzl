@@ -12,17 +12,18 @@ def _ansible_lint_aspect_impl(target, ctx):
     args = ctx.actions.args()
 
     inputs = depset(
-        [playbook_info.playbook, playbook_info.hosts, ctx.file._config],
+        [playbook_info.playbook, ctx.file._config],
         transitive = [playbook_info.inventory, playbook_info.roles],
     )
 
     output = ctx.actions.declare_file(target.label.name + ".ansible_lint_check")
 
     args.add("--output", output)
+    args.add("--playbook", target[AnsiblePlaybookInfo].playbook)
+    args.add("--config_file", ctx.file._config)
     args.add("--")
-    args.add(target[AnsiblePlaybookInfo].playbook)
     args.add("--show-relpath")
-    args.add("--config-file", ctx.file._config)
+    args.add("--offline")
 
     ctx.actions.run(
         executable = ctx.executable._process_wrapper,
@@ -42,8 +43,8 @@ ansible_lint_aspect = aspect(
     doc = "An aspect for linting ansible targets.",
     attrs = {
         "_config": attr.label(
-            doc = "The ansible config file to use",
-            default = Label("//ansible:config"),
+            doc = "The ansible config-lint file to use",
+            default = Label("//ansible:lint_config"),
             allow_single_file = True,
         ),
         "_process_wrapper": attr.label(
@@ -55,20 +56,15 @@ ansible_lint_aspect = aspect(
     },
 )
 
-def _runfile_path(file):
-    path = file.short_path
-    if path.startswith("../"):
-        path.replace("../", "external/", 1)
-
-    return path
-
 def _ansible_lint_test_impl(ctx):
     playbook_info = ctx.attr.playbook[AnsiblePlaybookInfo]
 
-    args = ["--"]
-    args.append(_runfile_path(playbook_info.playbook))
+    args = []
+    args.extend(["--playbook", playbook_info.playbook.short_path])
+    args.extend(["--config_file", ctx.file.config.short_path])
+    args.append("--")
     args.append("--show-relpath")
-    args.extend(["--config-file", _runfile_path(ctx.file.config)])
+    args.append("--offline")
 
     args_file = ctx.actions.declare_file("{}.args_file")
     ctx.actions.write(
@@ -83,10 +79,6 @@ def _ansible_lint_test_impl(ctx):
 
     runner, runfiles = py_binary_wrapper(ctx, ctx.attr._process_wrapper, runfiles)
 
-    args_file_path = args_file.short_path
-    if args_file_path.startswith("../"):
-        args_file_path.replace("../", "external/", 1)
-
     return [
         DefaultInfo(
             files = depset([runner]),
@@ -95,7 +87,7 @@ def _ansible_lint_test_impl(ctx):
         ),
         testing.TestEnvironment(
             environment = {
-                "ANSIBLE_LINT_ARGS_FILE": args_file_path,
+                "ANSIBLE_LINT_ARGS_FILE": args_file.short_path,
             },
         ),
     ]
@@ -105,8 +97,8 @@ ansible_lint_test = rule(
     doc = "A test rule for running `ansible-lint` on an Ansible playbook.",
     attrs = {
         "config": attr.label(
-            doc = "The ansible config file to use",
-            default = Label("//ansible:config"),
+            doc = "The ansible-lint config file to use",
+            default = Label("//ansible:lint_config"),
             allow_single_file = True,
         ),
         "playbook": attr.label(
