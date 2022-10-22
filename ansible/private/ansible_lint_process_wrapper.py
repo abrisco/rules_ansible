@@ -19,6 +19,11 @@ RUNFILES: Optional[runfiles._Runfiles] = runfiles.Create()
 
 
 def bazel_runfiles() -> runfiles._Runfiles:
+    """Get the current runfiles object.
+
+    Returns:
+        The bazel runfiles object.
+    """
     if not RUNFILES:
         raise EnvironmentError(
             "Unable to create runfiles object. Is the script running under Bazel?"
@@ -28,9 +33,17 @@ def bazel_runfiles() -> runfiles._Runfiles:
 
 
 def bazel_runfile_path(value: str) -> Path:
+    """Return the runfile path of a given runfile key
+
+    Args:
+        value: The runfile key or `File.short_path` value.
+
+    Returns:
+        The runfile path.
+    """
 
     if value.startswith("../"):
-        key = value
+        key = value[3:]
     else:
         key = "{}/{}".format(os.environ["TEST_WORKSPACE"], value)
 
@@ -42,6 +55,14 @@ def bazel_runfile_path(value: str) -> Path:
 
 
 def bazel_sandbox_path(value: str) -> Path:
+    """Return the value of a file relative to the cwd
+
+    Args:
+        value: The path
+
+    Returns:
+        An absolute path
+    """
 
     path = Path(value)
     if path.is_absolute():
@@ -51,6 +72,14 @@ def bazel_sandbox_path(value: str) -> Path:
 
 
 def _find_args_file() -> Optional[Path]:
+    """Attempt to find a file containing command line arguments.
+
+    This is required to work around:
+    https://github.com/bazelbuild/bazel/issues/16076
+
+    Returns:
+        The path to a uniqely named args file.
+    """
     if ANSIBLE_LINT_ARGS_FILE in os.environ:
         args_file = Path(os.environ[ANSIBLE_LINT_ARGS_FILE])
         if not args_file.exists():
@@ -60,6 +89,14 @@ def _find_args_file() -> Optional[Path]:
 
 
 def parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
+    """Parse command line arguments.
+
+    Args:
+        argv: An optional set of args to use instead of `sys.argv[1:]`
+
+    Returns:
+        Parsed arguments
+    """
     parser = argparse.ArgumentParser()
 
     file_type = bazel_sandbox_path
@@ -148,11 +185,28 @@ ENTRYPOINTS = {
 
 
 def write_entrypoint(path: Path, content: str) -> None:
+    """A helper function for writing executable files
+
+    Args:
+        path: The path of the file.
+        content: Content to write.
+    """
     path.write_text(content, encoding="utf-8")
     path.chmod(0o700)
 
 
-def lint_main(capture_output: bool = True, args: Iterable[str] = []) -> None:
+def lint_main(
+    capture_output: bool = True, args: Iterable[str] = []
+) -> subprocess.CompletedProcess:
+    """The entrypoint for running `ansible-lint` in a Bazel action or test.
+
+    Args:
+        capture_output: The value of `subprocess.run.capture_output`.
+        args: Arguments to pass to ansible-lint
+
+    Returns:
+        The results of the ansible-lint `subprocess.run`.
+    """
 
     # Generate temp directories within the sandbox
     dir_prefix = os.environ.get("TEST_TMPDIR", str(Path.cwd()))
@@ -200,6 +254,7 @@ def lint_main(capture_output: bool = True, args: Iterable[str] = []) -> None:
 
 
 def main() -> None:
+    """The main entrypoint of the script"""
 
     args_file = _find_args_file()
     argv = None
@@ -247,6 +302,7 @@ class AnsibleLintable(Lintable):
 
 
 def ansible_main() -> None:
+    """The ansible-lint entrypoint for directly invoking `ansible-lint`."""
     # Patch ansible-lint to avoid resolving symlinks
     import ansiblelint.file_utils
 

@@ -51,21 +51,16 @@ def _ansible_impl(ctx):
 
     env = {
         "ANSIBLE_BZL_ARGS": json.encode(getattr(ctx.attr, "args", [])),
+        "ANSIBLE_BZL_CONFIG": ctx.file.config.short_path,
         "ANSIBLE_BZL_INVENTORY_HOSTS": hosts_file.short_path,
         "ANSIBLE_BZL_LAUNCHER_NAME": ctx.label.name,
         "ANSIBLE_BZL_PACKAGE": ctx.label.package,
-        "ANSIBLE_BZL_PLAYBOOK": ctx.attr.playbook.label.name,
+        "ANSIBLE_BZL_PLAYBOOK": ctx.file.playbook.short_path,
         "ANSIBLE_BZL_VAULT_FILES": json.encode([file.short_path for file in vault_files]),
         "ANSIBLE_BZL_WORKSPACE_NAME": ctx.workspace_name,
     }
 
-    data = [ctx.file.playbook] + vault_files + ctx.files.inventory + ctx.files.roles
-
-    if ctx.attr.config:
-        env.update({
-            "ANSIBLE_BZL_CONFIG": ctx.attr.config.label.name,
-        })
-        data.append(ctx.file.config)
+    data = [ctx.file.playbook, ctx.file.config] + vault_files + ctx.files.inventory + ctx.files.roles
 
     runner, runfiles = py_binary_wrapper(ctx, ctx.attr._launcher, ctx.runfiles(files = data))
 
