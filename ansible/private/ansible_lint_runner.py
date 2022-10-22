@@ -7,6 +7,7 @@ import rules_ansible.ansible.private.ansible_lint_process_wrapper as ansible_lin
 
 
 def main() -> None:
+    """The main entrypoint of the script."""
     working_dir = os.environ.get(
         "BUILD_WORKING_DIRECTORY", os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     )

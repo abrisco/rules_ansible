@@ -24,6 +24,11 @@ RUNFILES: Optional[runfiles._Runfiles] = runfiles.Create()
 
 
 def bazel_runfiles() -> runfiles._Runfiles:
+    """Get the current runfiles object.
+
+    Returns:
+        The bazel runfiles object.
+    """
     if not RUNFILES:
         raise EnvironmentError(
             "Unable to create runfiles object. Is the script running under Bazel?"
@@ -33,9 +38,17 @@ def bazel_runfiles() -> runfiles._Runfiles:
 
 
 def bazel_runfile_path(value: str) -> Path:
+    """Return the runfile path of a given runfile key
+
+    Args:
+        value: The runfile key or `File.short_path` value.
+
+    Returns:
+        The runfile path.
+    """
 
     if value.startswith("../"):
-        key = value
+        key = value[3:]
     else:
         key = "{}/{}".format(os.environ[ENV_ANSIBLE_BZL_WORKSPACE_NAME], value)
 
@@ -46,23 +59,48 @@ def bazel_runfile_path(value: str) -> Path:
     return Path(path)
 
 
-def get_playbook(playbooks_dir: Optional[Path] = None) -> Path:
-    if not playbooks_dir:
-        playbooks_dir = get_target_package_dir()
+def get_playbook() -> Path:
+    """Get the path of the playbook to run.
+
+    Returns:
+        The path to the playbook to run
+    """
     env = os.getenv(ENV_ANSIBLE_BZL_PLAYBOOK)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_PLAYBOOK))
-    return playbooks_dir / env
+    return bazel_runfile_path(env)
 
 
 def get_inventory_hosts() -> Path:
+    """Get the path to the inventory `hosts` file.
+
+    Returns:
+        The path to `hosts`.
+    """
     env = os.getenv(ENV_ANSIBLE_BZL_INVENTORY_HOSTS)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_INVENTORY_HOSTS))
     return bazel_runfile_path(env)
 
 
+def get_ansible_config() -> Path:
+    """Get the path to the ansible.cfg file given to the `ansible_playbook` rule.
+
+    Returns:
+        The path to the ansible config
+    """
+    env = os.getenv(ENV_ANSIBLE_BZL_CONFIG)
+    if not env:
+        raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_CONFIG))
+    return bazel_runfile_path(env)
+
+
 def get_ansible_package() -> str:
+    """Return the package name of the `ansible_playbook` target
+
+    Returns:
+        The Bazel package name of the current target.
+    """
     env = os.getenv(ENV_ANSIBLE_BZL_PACKAGE)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_PACKAGE))
@@ -70,6 +108,11 @@ def get_ansible_package() -> str:
 
 
 def get_ansible_bin() -> Path:
+    """Locate the ansible-playbook binary
+
+    Returns:
+        A python entrypoint.
+    """
     path = Path(__file__).parent / "ansible-playbook.py"
     if not path.exists():
         raise FileNotFoundError(path)
@@ -78,6 +121,11 @@ def get_ansible_bin() -> Path:
 
 
 def get_ansible_vault_bin() -> Path:
+    """Locate the ansible-vault binary
+
+    Returns:
+        A python entrypoint.
+    """
     path = Path(__file__).parent / "ansible-vault.py"
     if not path.exists():
         raise FileNotFoundError(path)
@@ -85,14 +133,12 @@ def get_ansible_vault_bin() -> Path:
     return path
 
 
-def get_target_package_dir() -> Path:
-    env = os.getenv(ENV_ANSIBLE_BZL_PACKAGE)
-    if not env:
-        raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_PACKAGE))
-    return Path(env)
-
-
 def get_bazel_workspace_root() -> Path:
+    """Get the workspace root of the current target
+
+    Returns:
+        The Bazel workspace root.
+    """
     env = os.getenv("BUILD_WORKSPACE_DIRECTORY")
     if not env:
         raise EnvironmentError("BUILD_WORKSPACE_DIRECTORY is not set")
@@ -100,6 +146,11 @@ def get_bazel_workspace_root() -> Path:
 
 
 def get_ansible_args() -> List[str]:
+    """Return a list of extra args for running ansible.
+
+    Returns:
+        A list of arguments to pass to `ansible-playbook.`
+    """
     env = os.getenv(ENV_ANSIBLE_BZL_ARGS)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_ARGS))
@@ -107,22 +158,23 @@ def get_ansible_args() -> List[str]:
 
 
 def get_ansible_vault_files() -> List[str]:
+    """Return any vault encrypted files passed to the `ansible_playbook` target.
+
+    Returns:
+        A list of vault files
+    """
     env = os.getenv(ENV_ANSIBLE_BZL_VAULT_FILES)
     if not env:
-        raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_ARGS))
+        raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_VAULT_FILES))
     return [Path(file) for file in json.loads(env)]
 
 
-def get_ansible_config(target_package_dir: Optional[Path] = None) -> Optional[Path]:
-    if not target_package_dir:
-        target_package_dir = get_target_package_dir()
-    env = os.getenv(ENV_ANSIBLE_BZL_CONFIG)
-    if not env:
-        return None
-    return target_package_dir / env
-
-
 def find_vault_key() -> Optional[Path]:
+    """Locate the vault password file
+
+    Returns:
+        The path to the vault password file if found.
+    """
     # This assumes inventories are structured as `./inventories/<environment>/hosts`.
     # So if the grand parent of the hosts file is not a directory named `inventories`,
     # we assume the vault pass directory is structured in the same way.
@@ -151,6 +203,11 @@ def find_vault_key() -> Optional[Path]:
 
 
 def delete_files(files: List[Path]) -> None:
+    """Delete a list of files
+
+    Args:
+        files: The files to delete.
+    """
     for file in files:
         file.unlink()
 
@@ -159,6 +216,20 @@ def decrypt_vault(
     vault_files: List[Path],
     vault_key: Optional[Path],
 ) -> List[Path]:
+    """Decrypt vault files for use by ansible.
+
+    Files are expected to have a suffix matching the name of the `ansible_playbook` target and
+    `.vaultfile`. This allows us to decrypt the files into the expected location with the stripped
+    suffix so the playbooks have access to decrypted content without leaving decrypted content
+    in the repo.
+
+    Args:
+        vault_files: A list of paths to ansible-vault encrypted files
+        vault_key: The path to the vault password file. E.g. `/ansible/.vault-pass/<inventory>`
+
+    Returns:
+        Paths to the decrypted files.
+    """
 
     environ = os.environ.copy()
 
@@ -206,6 +277,13 @@ def run_ansible(
     vault_password_file: Optional[Path] = None,
     extra_args: List[str] = [],
 ) -> None:
+    """Run ansible-playbook
+
+    Args:
+        playbook: The path to the playbook to run.
+        vault_password_file: The vault password file to use. E.g. `/ansible/.vault-pass/<inventory>`
+        extra_args: Additional arguments to pass to the `ansible-playbook` call.
+    """
     ansible = get_ansible_bin()
 
     inventory = get_inventory_hosts().parent
@@ -232,7 +310,8 @@ def run_ansible(
     os.execve(sys.executable, [sys.executable] + command, env)
 
 
-def main():
+def main() -> None:
+    """The main entrypoint of the script."""
 
     playbook = get_playbook()
     if not playbook.exists():
