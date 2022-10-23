@@ -234,7 +234,8 @@ def decrypt_vault(
     environ = os.environ.copy()
 
     command = [
-        get_ansible_vault_bin(),
+        sys.executable,
+        str(get_ansible_vault_bin()),
         "decrypt",
     ]
 
