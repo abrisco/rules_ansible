@@ -50,3 +50,49 @@ def py_binary_wrapper(ctx, binary, runfiles):
     )
 
     return executable, runfiles
+
+_UNIX_COPIER = """\
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+mkdir -p $(dirname $2)
+cp -fp $1 $2
+"""
+
+_WINDOWS_COPIER = """\
+@ECHO OFF
+
+copy /Y %1 %2 >NUL
+"""
+
+def _copier_binary_impl(ctx):
+    if ctx.attr.is_windows:
+        executable = ctx.actions.declare_file(ctx.label.name + ".bat")
+        template = _WINDOWS_COPIER
+    else:
+        executable = ctx.actions.declare_file(ctx.label.name + ".sh")
+        template = _UNIX_COPIER
+
+    ctx.actions.write(
+        output = executable,
+        content = template,
+        is_executable = True,
+    )
+
+    return [DefaultInfo(
+        files = depset([executable]),
+        executable = executable,
+    )]
+
+copier_binary = rule(
+    doc = "A rule which create binaries for copying files from one place to another",
+    implementation = _copier_binary_impl,
+    executable = True,
+    attrs = {
+        "is_windows": attr.bool(
+            doc = "Whether or not a windows copier should be produced",
+            mandatory = True,
+        ),
+    },
+)

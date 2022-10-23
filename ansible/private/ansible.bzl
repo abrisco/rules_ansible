@@ -12,34 +12,126 @@ AnsiblePlaybookInfo = provider(
     },
 )
 
-def _ansible_impl(ctx):
-    # Create copies of all vault files to allow for them to be decrypted at
-    # runtime without ever litering the repo with decrypted files
-    vault_files = []
-    for vault_file in ctx.files.vault:
-        copy = ctx.actions.declare_file("{}.{}.vaultfile".format(
-            vault_file.owner.name,
-            ctx.label.name,
-        ))
-        args = ctx.actions.args()
-        args.add("--source", vault_file)
-        args.add("--destination", copy)
-        ctx.actions.run(
-            executable = ctx.executable._copier,
-            mnemonic = "AnsibleVaultCopier",
-            outputs = [copy],
-            arguments = [args],
-            inputs = [vault_file],
-            execution_requirements = {
-                "no-remote-cache": "1",
-            },
-        )
-        vault_files.append(copy)
+def _label_relativize(file):
+    """A utility function for determining the path of a file relative to the package it's defined in.
 
+    Args:
+        file (File): The file in question.
+
+    Returns:
+        str: The file path relative to the owner's package.
+    """
+    repo_path = file.short_path
+    if repo_path.startswith("../"):
+        repo_path = repo_path[3:]
+
+    if repo_path.startswith(file.owner.package):
+        repo_path = repo_path[len(file.owner.package):].lstrip("/")
+
+    return repo_path
+
+def _vault_copy_action(ctx, file):
+    """Spawn an action to copy a vault file.
+
+    Vault files are intended to be un-remote cachable.
+
+    Args:
+        ctx (ctx): The rule's context object.
+        file (File): A file in question.
+
+    Returns:
+        File: The action output.
+    """
+    copy = ctx.actions.declare_file("{}.ansible/{}.vaultfile".format(
+        ctx.label.name,
+        _label_relativize(file),
+    ))
+    args = ctx.actions.args()
+    args.add(file)
+    args.add(copy)
+    ctx.actions.run(
+        executable = ctx.executable._copier,
+        mnemonic = "AnsibleVaultCopier",
+        outputs = [copy],
+        arguments = [args],
+        inputs = [file],
+        # In addition to the security concerns, rationale for the execution requirements can be found here:
+        # https://github.com/bazelbuild/bazel-skylib/blob/1.3.0/rules/private/copy_common.bzl#L18-L54
+        execution_requirements = {
+            "local": "1",
+            "no-remote": "1",
+            "no-remote-cache": "1",
+        },
+    )
+    return copy
+
+def _copy_action(ctx, file, name = None):
+    """Spawn an action to copy a file.
+
+    Args:
+        ctx (ctx): The rule's context object.
+        file (File): A file in question.
+        name (str, optional): If set, this will be the path to the file instead of it's
+            package relativie name.
+
+    Returns:
+        File: The action output.
+    """
+    output = ctx.actions.declare_file("{}.ansible/{}".format(
+        ctx.label.name,
+        name or _label_relativize(file),
+    ))
+
+    args = ctx.actions.args()
+    args.add(file)
+    args.add(output)
+    ctx.actions.run(
+        executable = ctx.executable._copier,
+        mnemonic = "AnsibleCopier",
+        outputs = [output],
+        arguments = [args],
+        inputs = [file],
+        # Rationale for the execution requirements can be found here:
+        # https://github.com/bazelbuild/bazel-skylib/blob/1.3.0/rules/private/copy_common.bzl#L18-L54
+        execution_requirements = {
+            "local": "1",
+            "no-remote": "1",
+        },
+    )
+
+    return output
+
+def _copy_inventory_action(ctx, file):
+    """Spawn an action to copy an inventory file.
+
+    This function accounts for inventory structures where the targets
+    representing the inventory files may be within the `inventories`
+    directory. E.g. `//infra/ansible/inventories/staging:inventory`.
+
+    Args:
+        ctx (ctx): The rule's context object.
+        file (File): A file in question.
+
+    Returns:
+        File: The action output.
+    """
+    name = None
+    if "inventories" in file.owner.package:
+        _, _, env = file.owner.package.partition("inventories")
+        file_path = _label_relativize(file)
+        name = "inventories/{}/{}".format(env, file_path)
+
+    return _copy_action(ctx, file, name)
+
+def _ansible_impl(ctx):
     hosts_files = []
-    for src in ctx.files.inventory:
-        if src.basename == "hosts":
-            hosts_files.append(src)
+    inventory_files = []
+    for file in ctx.files.inventory:
+        if file.basename == "hosts":
+            hosts_files.append(file)
+            continue
+
+        inventory_files.append(_copy_inventory_action(ctx, file))
 
     if len(hosts_files) != 1:
         fail("Ansible playbooks are expected to have 1 hosts file available. Instead {} contained {}".format(
@@ -47,29 +139,36 @@ def _ansible_impl(ctx):
             hosts_files,
         ))
 
-    hosts_file = hosts_files[0]
+    hosts_file = _copy_inventory_action(ctx, hosts_files[0])
+    role_files = [_copy_action(ctx, file) for file in ctx.files.roles]
+    playbook = _copy_action(ctx, ctx.file.playbook)
+    config = _copy_action(ctx, ctx.file.config)
+
+    # Create copies of all vault files to allow for them to be decrypted at
+    # runtime without ever litering the repo with decrypted files
+    vault_files = [_vault_copy_action(ctx, file) for file in ctx.files.vault]
 
     env = {
         "ANSIBLE_BZL_ARGS": json.encode(getattr(ctx.attr, "args", [])),
-        "ANSIBLE_BZL_CONFIG": ctx.file.config.short_path,
+        "ANSIBLE_BZL_CONFIG": config.short_path,
         "ANSIBLE_BZL_INVENTORY_HOSTS": hosts_file.short_path,
         "ANSIBLE_BZL_LAUNCHER_NAME": ctx.label.name,
         "ANSIBLE_BZL_PACKAGE": ctx.label.package,
-        "ANSIBLE_BZL_PLAYBOOK": ctx.file.playbook.short_path,
+        "ANSIBLE_BZL_PLAYBOOK": playbook.short_path,
         "ANSIBLE_BZL_VAULT_FILES": json.encode([file.short_path for file in vault_files]),
         "ANSIBLE_BZL_WORKSPACE_NAME": ctx.workspace_name,
     }
 
-    data = [ctx.file.playbook, ctx.file.config] + vault_files + ctx.files.inventory + ctx.files.roles
+    data = [playbook, config, hosts_file] + vault_files + inventory_files + role_files
 
     runner, runfiles = py_binary_wrapper(ctx, ctx.attr._launcher, ctx.runfiles(files = data))
 
     return [
         AnsiblePlaybookInfo(
-            playbook = ctx.file.playbook,
+            playbook = playbook,
             hosts = hosts_file,
-            inventory = depset(ctx.files.inventory),
-            roles = depset(ctx.files.roles),
+            inventory = depset(inventory_files + [hosts_file]),
+            roles = depset(role_files),
         ),
         DefaultInfo(
             files = depset([runner]),
