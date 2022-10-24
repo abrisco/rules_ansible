@@ -1,3 +1,3 @@
 """ Version info for the `rules_ansible` repository """
 
-VERSION = "0.0.6"
+VERSION = "0.0.7"
