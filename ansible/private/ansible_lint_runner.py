@@ -2,6 +2,8 @@
 
 import os
 import sys
+import tempfile
+from pathlib import Path
 
 import rules_ansible.ansible.private.ansible_lint_process_wrapper as ansible_lint
 
@@ -18,7 +20,10 @@ def main() -> None:
 
     os.chdir(working_dir)
 
-    proc = ansible_lint.lint_main(capture_output=False, args=sys.argv[1:])
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        proc = ansible_lint.lint_main(
+            capture_output=False, args=sys.argv[1:], temp_dir=Path(tmp_dir)
+        )
 
     sys.exit(proc.returncode)
 
