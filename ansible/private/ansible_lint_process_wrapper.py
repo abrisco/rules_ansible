@@ -196,20 +196,26 @@ def write_entrypoint(path: Path, content: str) -> None:
 
 
 def lint_main(
-    capture_output: bool = True, args: Iterable[str] = []
+    capture_output: bool = True,
+    args: Iterable[str] = [],
+    temp_dir: Optional[Path] = None,
 ) -> subprocess.CompletedProcess:
     """The entrypoint for running `ansible-lint` in a Bazel action or test.
 
     Args:
         capture_output: The value of `subprocess.run.capture_output`.
         args: Arguments to pass to ansible-lint
+        temp_dir: An optional base directory to use for writing files reqired by
+            linting. if not set, a temporary directory will be generated separately.
 
     Returns:
         The results of the ansible-lint `subprocess.run`.
     """
 
     # Generate temp directories within the sandbox
-    dir_prefix = os.environ.get("TEST_TMPDIR", str(Path.cwd()))
+    dir_prefix = (
+        str(temp_dir) if temp_dir else os.environ.get("TEST_TMPDIR", str(Path.cwd()))
+    )
 
     # Create a directory to append to `PATH`
     tmp_path = Path(tempfile.mkdtemp(dir=dir_prefix)) / "_fakepath"
