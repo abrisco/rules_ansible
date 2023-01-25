@@ -12,7 +12,7 @@
     - libsemanage-python
 
 - name: Configure SELinux to start mysql on any port
-  seboolean:
+  ansible.posix.seboolean:
     name: mysql_connect_any
     state: true
     persistent: true
@@ -22,7 +22,7 @@
   ansible.builtin.template:
     src: my.cnf.j2
     dest: /etc/my.cnf
-    mode: 0600
+    mode: "0o600"
   notify:
     - Restart mysql
 
@@ -42,12 +42,12 @@
   notify: Restart iptables
 
 - name: Create Application Database
-  mysql_db:
+  community.mysql.mysql_db:
     name: "{{ dbname }}"
     state: present
 
 - name: Create Application DB User
-  mysql_user:
+  community.mysql.mysql_user:
     name: "{{ dbuser }}"
     password: "{{ upassword }}"
     priv: "*.*:ALL"

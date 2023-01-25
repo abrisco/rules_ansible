@@ -1,8 +1,5 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
-load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_python//python:defs.bzl", "py_binary")
-load("@rules_python//python/pip_install:requirements.bzl", "compile_pip_requirements")
 load("//ansible:toolchain.bzl", "current_ansible_toolchain")
 
 current_ansible_toolchain(
@@ -26,15 +23,9 @@ current_ansible_toolchain(
     visibility = ["//visibility:public"],
 )
 
-copy_file(
-    name = "ansible_playbook_src",
-    src = "ansible_setup_py_script.py",
-    out = "ansible-playbook.py",
-)
-
 py_binary(
-    name = "ansible-playbook",
-    srcs = ["ansible-playbook.py"],
+    name = "ansible_playbook",
+    srcs = ["ansible_playbook.py"],
     visibility = ["//visibility:public"],
     deps = [
         ":current_ansible",
@@ -42,45 +33,22 @@ py_binary(
     ],
 )
 
-copy_file(
-    name = "ansible_vault_src",
-    src = "ansible_setup_py_script.py",
-    out = "ansible-vault.py",
-)
-
 py_binary(
-    name = "ansible-vault",
-    srcs = ["ansible-vault.py"],
+    name = "ansible_vault",
+    srcs = ["ansible_vault.py"],
     visibility = ["//visibility:public"],
     deps = [
         ":current_ansible",
         ":current_ansible_core",
     ],
-)
-
-write_file(
-    name = "ansible_lint_src",
-    out = "ansible-lint.py",
-    content = """\
-# -*- coding: utf-8 -*-
-import os
-import re
-import sys
-from ansiblelint.__main__ import _run_cli_entrypoint
-if __name__ == '__main__':
-    if "BUILD_WORKING_DIRECTORY" in os.environ:
-        os.chdir(os.environ["BUILD_WORKING_DIRECTORY"])
-    sys.argv[0] = re.sub(r'(-script\\.pyw|\\.exe)?$', '', sys.argv[0])
-    sys.exit(_run_cli_entrypoint())
-""".splitlines(),
 )
 
 py_binary(
     name = "ansible_launcher",
     srcs = [
-        "ansible-playbook.py",
-        "ansible-vault.py",
         "ansible_launcher.py",
+        "ansible_playbook.py",
+        "ansible_vault.py",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -120,12 +88,4 @@ bzl_library(
     deps = [
         "//ansible/private/utils:bzl_lib",
     ],
-)
-
-compile_pip_requirements(
-    name = "requirements",
-    extra_args = ["--allow-unsafe"],
-    requirements_in = "//ansible:requirements.in",
-    requirements_txt = "//ansible:requirements.txt",
-    tags = ["manual"],
 )

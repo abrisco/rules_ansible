@@ -21,7 +21,7 @@
     regexp: "{{ httpd_port }}"
     insertafter: "^:OUTPUT "
     line: -A INPUT -p tcp  --dport {{ httpd_port }} -j  ACCEPT
-    mode: 0600
+    mode: "0o600"
   notify: Restart iptables
 
 - name: Http service state
@@ -31,7 +31,7 @@
     enabled: true
 
 - name: Configure SELinux to allow httpd to connect to remote database
-  seboolean:
+  ansible.posix.seboolean:
     name: httpd_can_network_connect_db
     state: true
     persistent: true
