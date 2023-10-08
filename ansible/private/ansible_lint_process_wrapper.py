@@ -8,7 +8,6 @@ import tempfile
 from pathlib import Path
 from typing import Iterable, Optional, Sequence
 
-from ansiblelint.__main__ import _run_cli_entrypoint
 from ansiblelint.constants import FileType
 from ansiblelint.file_utils import Lintable
 from rules_python.python.runfiles import runfiles
@@ -297,12 +296,21 @@ class AnsibleLintable(Lintable):
 
     def __init__(
         self,
-        name: str,
-        content: Optional[str] = None,
-        kind: Optional[FileType] = None,
+        name: str | Path,
+        content: str | None = None,
+        kind: FileType | None = None,
+        base_kind: str = "",
+        parent: Lintable | None = None,
     ):
         orig_path = Path.cwd() / name
-        super().__init__(name=name, content=content, kind=kind)
+        super().__init__(
+            name=name,
+            content=content,
+            kind=kind,
+            base_kind=base_kind,
+            parent=parent,
+        )
+
         self.path = self.abspath = orig_path
         self.name = self.filename = str(orig_path)
 
@@ -313,6 +321,8 @@ def ansible_main() -> None:
     import ansiblelint.file_utils
 
     ansiblelint.file_utils.Lintable = AnsibleLintable
+
+    from ansiblelint.__main__ import _run_cli_entrypoint
 
     sys.exit(_run_cli_entrypoint())
 

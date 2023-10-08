@@ -1,6 +1,6 @@
 """Ansible pip dependencies"""
 
-load("@python39//:defs.bzl", "interpreter")
+load("@python311//:defs.bzl", "interpreter")
 load("@rules_python//python:pip.bzl", "pip_parse")
 
 def rules_ansible_pip_dependencies():

@@ -5,7 +5,7 @@ ansible_playbook(
     inventory = ["hosts"] + glob([
         "group_vars/**",
     ]),
-    playbook = "site.yml",
+    playbook = "site.yaml",
     roles = glob(["roles/**"]),
 )
 
