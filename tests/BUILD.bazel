@@ -1,0 +1,8 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+
+py_binary(
+    name = "infra_setup",
+    srcs = ["infra_setup.py"],
+    data = ["Dockerfile"],
+    env = {"DOCKERFILE": "$(rootpath :Dockerfile)"},
+)

@@ -74,6 +74,17 @@ jobs:
             bazel ${BAZEL_STARTUP_FLAGS[@]} test //...
           fi
 
+      - name: Integration tests
+        run: |
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            bazel ${BAZEL_STARTUP_FLAGS[@]} run ////tests:infra_setup
+            bazel ${BAZEL_STARTUP_FLAGS[@]} run ////tests/simple
+          else
+            bazel ${BAZEL_STARTUP_FLAGS[@]} run //tests:infra_setup
+            bazel ${BAZEL_STARTUP_FLAGS[@]} run //tests/simple
+          fi
+        if: startswith(runner.os, 'Linux')
+
   ci-aspects:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -133,6 +144,17 @@ jobs:
             bazel ${BAZEL_STARTUP_FLAGS[@]} test //...
           fi
 
+      - name: Integration tests
+        run: |
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            bazel ${BAZEL_STARTUP_FLAGS[@]} run ////tests:infra_setup
+            bazel ${BAZEL_STARTUP_FLAGS[@]} run ////tests/simple
+          else
+            bazel ${BAZEL_STARTUP_FLAGS[@]} run //tests:infra_setup
+            bazel ${BAZEL_STARTUP_FLAGS[@]} run //tests/simple
+          fi
+        if: startswith(runner.os, 'Linux')
+
   ci-buildifier:
     runs-on: ubuntu-20.04
     steps:
@@ -144,3 +166,25 @@ jobs:
           chmod +x buildifier
       - name: Buildifier
         run: ./buildifier -lint=warn -mode=check -warnings=all -r ${{ github.workspace }}
+
+  ci-lint:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.11
+      - uses: syphar/restore-virtualenv@v1
+        id: cache-virtualenv
+        with:
+          requirement_files: ansible/requirements.txt
+      - uses: syphar/restore-pip-download-cache@v1
+        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+      - run: |
+          pip install -r ansible/requirements.txt
+          pip install mypy black isort
+        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+      - uses: isort/isort-action@v1
+      - uses: rickstaa/action-black@v1
+        with:
+          black_args: ". --check"

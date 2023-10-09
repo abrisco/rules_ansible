@@ -9,18 +9,22 @@ def _ansible_lint_aspect_impl(target, ctx):
 
     playbook_info = target[AnsiblePlaybookInfo]
 
+    config = ctx.rule.file.config
+
     args = ctx.actions.args()
 
     inputs = depset(
-        [playbook_info.playbook, ctx.file._config],
+        [playbook_info.playbook, ctx.file._lint_config, config],
         transitive = [playbook_info.inventory, playbook_info.roles],
     )
 
     output = ctx.actions.declare_file(target.label.name + ".ansible_lint_check")
 
     args.add("--output", output)
+    args.add("--package", target.label.package)
     args.add("--playbook", target[AnsiblePlaybookInfo].playbook)
-    args.add("--config_file", ctx.file._config)
+    args.add("--config_file", config)
+    args.add("--lint_config_file", ctx.file._lint_config)
     args.add("--")
     args.add("--show-relpath")
     args.add("--offline")
@@ -42,8 +46,8 @@ ansible_lint_aspect = aspect(
     implementation = _ansible_lint_aspect_impl,
     doc = "An aspect for linting ansible targets.",
     attrs = {
-        "_config": attr.label(
-            doc = "The ansible config-lint file to use",
+        "_lint_config": attr.label(
+            doc = "The ansible-lint config file to use",
             default = Label("//ansible:lint_config"),
             allow_single_file = True,
         ),
@@ -56,12 +60,35 @@ ansible_lint_aspect = aspect(
     },
 )
 
+_AnsibleConfigFinderInfo = provider(
+    doc = "A provider which identifies a target ansible config file.",
+    fields = {
+        "config": "File: The config file.",
+    },
+)
+
+def _ansible_config_finder_aspect_impl(target, ctx):
+    if _AnsibleConfigFinderInfo in target:
+        return []
+
+    return _AnsibleConfigFinderInfo(
+        config = ctx.rule.file.config,
+    )
+
+_ansible_config_finder_aspect = aspect(
+    doc = "An aspect for locating a playbooks config file",
+    implementation = _ansible_config_finder_aspect_impl,
+)
+
 def _ansible_lint_test_impl(ctx):
     playbook_info = ctx.attr.playbook[AnsiblePlaybookInfo]
+    config = ctx.attr.playbook[_AnsibleConfigFinderInfo].config
 
     args = []
     args.extend(["--playbook", playbook_info.playbook.short_path])
-    args.extend(["--config_file", ctx.file.config.short_path])
+    args.extend(["--package", ctx.attr.playbook.label.package])
+    args.extend(["--config_file", config.short_path])
+    args.extend(["--lint_config_file", ctx.file.config.short_path])
     args.append("--")
     args.append("--show-relpath")
     args.append("--offline")
@@ -73,7 +100,7 @@ def _ansible_lint_test_impl(ctx):
     )
 
     runfiles = ctx.runfiles(
-        files = [args_file, playbook_info.playbook, playbook_info.hosts, ctx.file.config],
+        files = [args_file, playbook_info.playbook, playbook_info.hosts, ctx.file.config, config],
         transitive_files = depset(transitive = [playbook_info.inventory, playbook_info.roles]),
     )
 
@@ -104,6 +131,7 @@ ansible_lint_test = rule(
         "playbook": attr.label(
             doc = "The `ansible_playbook` target to lint.",
             providers = [AnsiblePlaybookInfo],
+            aspects = [_ansible_config_finder_aspect],
             mandatory = True,
         ),
         "_process_wrapper": attr.label(

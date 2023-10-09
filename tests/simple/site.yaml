@@ -1,0 +1,8 @@
+---
+# This playbook deploys the whole application stack in this site.
+
+- name: Configure all clients
+  hosts: all
+  remote_user: root
+  roles:
+    - rust

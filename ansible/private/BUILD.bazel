@@ -44,6 +44,16 @@ py_binary(
 )
 
 py_binary(
+    name = "ansible_doc",
+    srcs = ["ansible_doc.py"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":current_ansible",
+        ":current_ansible_core",
+    ],
+)
+
+py_binary(
     name = "ansible_launcher",
     srcs = [
         "ansible_launcher.py",
@@ -61,8 +71,14 @@ py_binary(
 py_binary(
     name = "ansible_lint_process_wrapper",
     srcs = [
+        "ansible.py",
+        "ansible_config.py",
+        "ansible_doc.py",
         "ansible_lint_process_wrapper.py",
+        "ansible_playbook.py",
+        "ansible_vault.py",
     ],
+    main = "ansible_lint_process_wrapper.py",
     visibility = ["//visibility:public"],
     deps = [
         ":current_ansible",

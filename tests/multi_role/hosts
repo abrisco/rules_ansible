@@ -1,0 +1,5 @@
+[webservers]
+web3 ansible_connection=docker
+
+[dbservers]
+web2 ansible_connection=docker

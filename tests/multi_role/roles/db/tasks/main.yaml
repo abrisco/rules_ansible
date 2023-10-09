@@ -1,0 +1,8 @@
+---
+
+- name: Install postgres
+  ansible.builtin.dnf: # noqa: package-latest
+    name:
+      - postgresql
+      - postgresql-server
+    state: latest
