@@ -2,6 +2,7 @@ load("@rules_ansible//ansible:defs.bzl", "ansible_lint_test", "ansible_playbook"
 
 ansible_playbook(
     name = "lamp_simple",
+    hosts = "hosts",
     inventory = ["hosts"] + glob([
         "group_vars/**",
     ]),

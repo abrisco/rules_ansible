@@ -66,7 +66,7 @@ def _ansible_lint_test_impl(ctx):
     args.append("--show-relpath")
     args.append("--offline")
 
-    args_file = ctx.actions.declare_file("{}.args_file")
+    args_file = ctx.actions.declare_file("{}.args_file.txt".format(ctx.label.name))
     ctx.actions.write(
         output = args_file,
         content = "\n".join(args),
