@@ -115,7 +115,7 @@ def _copy_inventory_action(ctx, file):
     Returns:
         File: The action output.
     """
-    name = None
+    name = file.basename
     if "inventories" in file.owner.package:
         _, _, env = file.owner.package.partition("inventories")
         file_path = _label_relativize(file)
@@ -123,23 +123,9 @@ def _copy_inventory_action(ctx, file):
 
     return _copy_action(ctx, file, name)
 
-def _ansible_impl(ctx):
-    hosts_files = []
-    inventory_files = []
-    for file in ctx.files.inventory:
-        if file.basename == "hosts":
-            hosts_files.append(file)
-            continue
-
-        inventory_files.append(_copy_inventory_action(ctx, file))
-
-    if len(hosts_files) != 1:
-        fail("Ansible playbooks are expected to have 1 hosts file available. Instead {} contained {}".format(
-            ctx.label,
-            hosts_files,
-        ))
-
-    hosts_file = _copy_inventory_action(ctx, hosts_files[0])
+def _ansible_playbook_impl(ctx):
+    hosts_file = _copy_inventory_action(ctx, ctx.file.hosts)
+    inventory_files = [_copy_inventory_action(ctx, file) for file in ctx.files.inventory]
     role_files = [_copy_action(ctx, file) for file in ctx.files.roles]
     playbook = _copy_action(ctx, ctx.file.playbook)
     config = _copy_action(ctx, ctx.file.config)
@@ -181,13 +167,18 @@ def _ansible_impl(ctx):
     ]
 
 ansible_playbook = rule(
-    implementation = _ansible_impl,
+    implementation = _ansible_playbook_impl,
     doc = "A rule for running [Ansible playbooks](https://docs.ansible.com/ansible/latest/user_guide/playbooks_intro.html)",
     attrs = {
         "config": attr.label(
             doc = "The path to an Ansible config file.",
             default = Label("//ansible:config"),
             allow_single_file = True,
+        ),
+        "hosts": attr.label(
+            doc = "Ansible hosts file",
+            allow_single_file = True,
+            mandatory = True,
         ),
         "inventory": attr.label_list(
             doc = "Ansible inventory files",

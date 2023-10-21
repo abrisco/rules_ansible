@@ -287,7 +287,7 @@ def run_ansible(
     """
     ansible = get_ansible_bin()
 
-    inventory = get_inventory_hosts().parent
+    inventory = get_inventory_hosts()
 
     command = [
         str(ansible),
