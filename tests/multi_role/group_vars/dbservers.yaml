@@ -1,0 +1,4 @@
+---
+db_user: ansible
+db_password: ansible
+db_name: ansible

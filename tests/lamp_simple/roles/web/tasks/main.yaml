@@ -1,5 +1,0 @@
----
-- name: Import install_httpd.yaml
-  ansible.builtin.import_tasks: install_httpd.yaml
-- name: Import copy_code.yaml
-  ansible.builtin.import_tasks: copy_code.yaml

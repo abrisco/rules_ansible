@@ -1,10 +1,30 @@
-# Bazel configuration flags
+###############################################################################
+## Bazel Configuration Flags
+##
+## `.bazelrc` is a Bazel configuration file.
+## https://bazel.build/docs/best-practices#bazelrc-file
+###############################################################################
 
 # Aspects for running ansible-lint
 build:ansible_lint --aspects=//ansible:defs.bzl%ansible_lint_aspect
 build:ansible_lint --output_groups=+ansible_lint_checks
 
 build:strict --config=ansible_lint
+
+###############################################################################
+## Incompatibility flags
+###############################################################################
+
+# https://github.com/bazelbuild/bazel/issues/8195
+build --incompatible_disallow_empty_glob=true
+
+# https://github.com/bazelbuild/bazel/issues/12821
+build --nolegacy_external_runfiles
+
+# Common flags used to improve bazel python performance
+build --nobuild_runfile_links
+
+###############################################################################
 
 # This flag should always go last
 try-import %workspace%/user.bazelrc

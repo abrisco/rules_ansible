@@ -5,16 +5,27 @@ import os
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from pathlib import Path, PurePosixPath
+from typing import Dict, Iterable, Optional, Sequence
 
-from ansiblelint.constants import FileType
 from ansiblelint.file_utils import Lintable
 from rules_python.python.runfiles import runfiles
 
 ANSIBLE_LINT_ARGS_FILE = "ANSIBLE_LINT_ARGS_FILE"
 ANSIBLE_LINT_ENTRY_POINT = "ANSIBLE_LINT_ENTRY_POINT"
 RUNFILES: Optional[runfiles._Runfiles] = runfiles.Create()
+
+
+def is_test() -> bool:
+    """Determin if the process is running under `bazel test`.
+
+    Returns:
+        True if the process is running under `bazel test`.
+    """
+    if "TEST_WORKSPACE" in os.environ:
+        return True
+
+    return False
 
 
 def bazel_runfiles() -> runfiles._Runfiles:
@@ -40,11 +51,14 @@ def bazel_runfile_path(value: str) -> Path:
     Returns:
         The runfile path.
     """
-
     if value.startswith("../"):
-        key = value[3:]
+        key = value[len("../") :]
+    elif value.startswith("rules_ansible/"):
+        key = value
+    elif value.startswith("external/"):
+        key = value[len("external/") :]
     else:
-        key = "{}/{}".format(os.environ["TEST_WORKSPACE"], value)
+        key = str(PurePosixPath(os.environ["TEST_WORKSPACE"]) / value)
 
     path = bazel_runfiles().Rlocation(key)
     if not path:
@@ -62,7 +76,6 @@ def bazel_sandbox_path(value: str) -> Path:
     Returns:
         An absolute path
     """
-
     path = Path(value)
     if path.is_absolute():
         return path
@@ -77,7 +90,7 @@ def _find_args_file() -> Optional[Path]:
     https://github.com/bazelbuild/bazel/issues/16076
 
     Returns:
-        The path to a uniqely named args file.
+        The path to a uniquely named args file.
     """
     if ANSIBLE_LINT_ARGS_FILE in os.environ:
         args_file = Path(os.environ[ANSIBLE_LINT_ARGS_FILE])
@@ -98,14 +111,19 @@ def parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser()
 
-    file_type = bazel_sandbox_path
-    if "TEST_WORKSPACE" in os.environ:
-        file_type = bazel_runfile_path
+    file_type = bazel_runfile_path if is_test() else bazel_sandbox_path
 
     parser.add_argument(
         "--output",
         type=Path,
         help="An optional output file to produce",
+    )
+    parser.add_argument(
+        # This argument is used for sanitizing logs
+        "--package",
+        type=str,
+        required=True,
+        help="The package of the playbook target used for linting.",
     )
     parser.add_argument(
         "--playbook",
@@ -115,6 +133,12 @@ def parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--config_file",
+        type=file_type,
+        required=True,
+        help="The ansible config file.",
+    )
+    parser.add_argument(
+        "--lint_config_file",
         type=file_type,
         required=True,
         help="The ansible-lint config file.",
@@ -135,7 +159,7 @@ def parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     args.lint_args = (
         [
             "--config-file",
-            str(args.config_file),
+            str(args.lint_config_file),
             "--project-dir",
             str(args.playbook.parent),
         ]
@@ -146,41 +170,31 @@ def parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     return args
 
 
-ANSIBLE_ENTRYPOINT = """\
-# -*- coding: utf-8 -*-
-import re
-import sys
-from ansible.cli.adhoc import main
-if __name__ == '__main__':
-    sys.argv[0] = re.sub(r'(-script\\.pyw|\\.exe)?$', '', sys.argv[0])
-    sys.exit(main())
-"""
+def load_entrypoints() -> Dict[str, str]:
+    """Load entrypoints files into a dict
 
-ANSIBLE_CONFIG_ENTRYPOINT = """\
-# -*- coding: utf-8 -*-
-import re
-import sys
-from ansible.cli.config import main
-if __name__ == '__main__':
-    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
-    sys.exit(main())
-"""
+    Returns:
+        A mapping of entrypoints to their text contents.
+    """
+    lookup = bazel_sandbox_path
+    entrypoints = {
+        "ansible": "ansible/private/ansible.py",
+        "ansible-config": "ansible/private/ansible_config.py",
+        "ansible-playbook": "ansible/private/ansible_playbook.py",
+        "ansible-doc": "ansible/private/ansible_doc.py",
+    }
 
-ANSIBLE_PLAYBOOK_ENTRYPOINT = """\
-# -*- coding: utf-8 -*-
-import re
-import sys
-from ansible.cli.playbook import main
-if __name__ == '__main__':
-    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
-    sys.exit(main())
-"""
+    # Convert to runfiles path
+    if is_test():
+        lookup = bazel_runfile_path
+        entrypoints = {
+            name: f"rules_ansible/{path}" for name, path in entrypoints.items()
+        }
 
-ENTRYPOINTS = {
-    "ansible": ANSIBLE_ENTRYPOINT,
-    "ansible-config": ANSIBLE_CONFIG_ENTRYPOINT,
-    "ansible-playbook": ANSIBLE_PLAYBOOK_ENTRYPOINT,
-}
+    return {
+        name: lookup(path).read_text(encoding="utf-8")
+        for name, path in entrypoints.items()
+    }
 
 
 def write_entrypoint(path: Path, content: str) -> None:
@@ -195,6 +209,8 @@ def write_entrypoint(path: Path, content: str) -> None:
 
 
 def lint_main(
+    config: Path,
+    playbook_dir: Path,
     capture_output: bool = True,
     args: Iterable[str] = [],
     temp_dir: Optional[Path] = None,
@@ -202,6 +218,8 @@ def lint_main(
     """The entrypoint for running `ansible-lint` in a Bazel action or test.
 
     Args:
+        config: The path to the ansible config file.
+        playbook_dir: The path to the ansible playbook directory.
         capture_output: The value of `subprocess.run.capture_output`.
         args: Arguments to pass to ansible-lint
         temp_dir: An optional base directory to use for writing files reqired by
@@ -220,10 +238,12 @@ def lint_main(
     tmp_path = Path(tempfile.mkdtemp(dir=dir_prefix)) / "_fakepath"
     tmp_path.mkdir(exist_ok=True, parents=True)
 
-    for tool, content in ENTRYPOINTS.items():
+    interp_name = Path(sys.executable).name
+
+    for tool, content in load_entrypoints().items():
         entrypoint_content = "\n".join(
             [
-                "#!/usr/bin/env {}".format(Path(sys.executable).name),
+                f"#!/usr/bin/env {interp_name}",
                 content,
             ]
         )
@@ -232,8 +252,9 @@ def lint_main(
 
     # Create a symlink to the python interpreter
     for ext in ["", ".exe"]:
-        interpreter = tmp_path / ("python3" + ext)
-        interpreter.symlink_to(sys.executable)
+        for name in set(["python3", interp_name]):
+            interpreter = tmp_path / (name + ext)
+            interpreter.symlink_to(sys.executable)
 
     env = dict(os.environ)
     sys_path = str(tmp_path) + os.pathsep + env.get("PATH", "")
@@ -242,8 +263,11 @@ def lint_main(
             "HOME": str(tmp_path),
             ANSIBLE_LINT_ENTRY_POINT: __file__,
             "PATH": sys_path,
+            "ANSIBLE_CONFIG": str(config),
+            "ANSIBLE_PLAYBOOK_DIR": str(playbook_dir),
         }
     )
+    print(playbook_dir)
 
     lint_args = [
         sys.executable,
@@ -254,7 +278,8 @@ def lint_main(
         lint_args,
         env=env,
         check=False,
-        capture_output=capture_output,
+        stdout=subprocess.PIPE if capture_output else None,
+        stderr=subprocess.STDOUT if capture_output else None,
     )
 
 
@@ -267,21 +292,15 @@ def main() -> None:
         argv = args_file.read_text(encoding="utf-8").splitlines()
     args = parse_args(argv)
 
-    proc = lint_main(args=args.lint_args)
+    proc = lint_main(
+        config=args.config_file, playbook_dir=args.playbook.parent, args=args.lint_args
+    )
 
     if proc.returncode:
         stdout = proc.stdout.decode(encoding="utf-8")
-        stderr = proc.stderr.decode(encoding="utf-8")
+        stdout = stdout.replace(str(args.playbook.parent), args.package)
 
-        # The first lint argument is always the path to the playbook
-        playbook = Path(args.lint_args[0])
-        if playbook.exists():
-            abs_parent = playbook.resolve().parent
-            stdout = stdout.replace(str(abs_parent), "{PLAYBOOK_DIR}")
-            stderr = stderr.replace(str(abs_parent), "{PLAYBOOK_DIR}")
-
-        print(stdout, file=sys.stdout)
-        print(stderr, file=sys.stderr)
+        print(stdout, file=sys.stderr)
         sys.exit(proc.returncode)
 
     if args.output:
@@ -297,19 +316,11 @@ class AnsibleLintable(Lintable):
     def __init__(
         self,
         name: str | Path,
-        content: str | None = None,
-        kind: FileType | None = None,
-        base_kind: str = "",
-        parent: Lintable | None = None,
+        *args,
+        **kwargs,
     ):
         orig_path = Path.cwd() / name
-        super().__init__(
-            name=name,
-            content=content,
-            kind=kind,
-            base_kind=base_kind,
-            parent=parent,
-        )
+        super().__init__(name=name, *args, **kwargs)
 
         self.path = self.abspath = orig_path
         self.name = self.filename = str(orig_path)
@@ -324,7 +335,7 @@ def ansible_main() -> None:
 
     from ansiblelint.__main__ import _run_cli_entrypoint
 
-    sys.exit(_run_cli_entrypoint())
+    _run_cli_entrypoint()
 
 
 if __name__ == "__main__":

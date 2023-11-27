@@ -1,0 +1,12 @@
+---
+- name: Create rulesansible group
+  group:
+    name: rulesansible
+    state: present
+
+- name: Create rulesansible user
+  user:
+    name: rulesansible
+    groups: 
+      - rulesansible
+    append: True
