@@ -24,41 +24,11 @@ current_ansible_toolchain(
 )
 
 py_binary(
-    name = "ansible_playbook",
-    srcs = ["ansible_playbook.py"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":current_ansible",
-        ":current_ansible_core",
-    ],
-)
-
-py_binary(
-    name = "ansible_vault",
-    srcs = ["ansible_vault.py"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":current_ansible",
-        ":current_ansible_core",
-    ],
-)
-
-py_binary(
-    name = "ansible_doc",
-    srcs = ["ansible_doc.py"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":current_ansible",
-        ":current_ansible_core",
-    ],
-)
-
-py_binary(
     name = "ansible_launcher",
     srcs = [
         "ansible_launcher.py",
-        "ansible_playbook.py",
-        "ansible_vault.py",
+        "scripts/ansible_playbook.py",
+        "scripts/ansible_vault.py",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -71,12 +41,13 @@ py_binary(
 py_binary(
     name = "ansible_lint_process_wrapper",
     srcs = [
-        "ansible.py",
-        "ansible_config.py",
-        "ansible_doc.py",
         "ansible_lint_process_wrapper.py",
-        "ansible_playbook.py",
-        "ansible_vault.py",
+        "scripts/ansible.py",
+        "scripts/ansible_config.py",
+        "scripts/ansible_doc.py",
+        "scripts/ansible_galaxy.py",
+        "scripts/ansible_playbook.py",
+        "scripts/ansible_vault.py",
     ],
     main = "ansible_lint_process_wrapper.py",
     visibility = ["//visibility:public"],
@@ -102,6 +73,6 @@ bzl_library(
     srcs = glob(["*.bzl"]),
     visibility = ["//ansible:__pkg__"],
     deps = [
-        "//ansible/private/utils:bzl_lib",
+        "//private/utils:bzl_lib",
     ],
 )

@@ -59,11 +59,11 @@ with their own requirements and register that in the workspace.
 """
 
 load(
-    "//ansible/private:ansible.bzl",
+    "//private:ansible.bzl",
     _ansible_playbook = "ansible_playbook",
 )
 load(
-    "//ansible/private:lint.bzl",
+    "//private:lint.bzl",
     _ansible_lint_aspect = "ansible_lint_aspect",
     _ansible_lint_test = "ansible_lint_test",
 )

@@ -1,6 +1,6 @@
 """Rules for linting ansible playbooks"""
 
-load("//ansible/private/utils:utils.bzl", "py_binary_wrapper")
+load("//private/utils:utils.bzl", "py_binary_wrapper")
 load(":ansible.bzl", "AnsiblePlaybookInfo")
 
 def _ansible_lint_aspect_impl(target, ctx):
@@ -55,7 +55,7 @@ ansible_lint_aspect = aspect(
             doc = "A process wrapper for running `ansible-lint`.",
             cfg = "exec",
             executable = True,
-            default = Label("//ansible/private:ansible_lint_process_wrapper"),
+            default = Label("//private:ansible_lint_process_wrapper"),
         ),
     },
 )
@@ -138,7 +138,7 @@ ansible_lint_test = rule(
             doc = "A process wrapper for running `ansible-lint`.",
             cfg = "exec",
             executable = True,
-            default = Label("//ansible/private:ansible_lint_process_wrapper"),
+            default = Label("//private:ansible_lint_process_wrapper"),
         ),
     },
     test = True,

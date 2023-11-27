@@ -113,7 +113,7 @@ def get_ansible_bin() -> Path:
     Returns:
         A python entrypoint.
     """
-    path = Path(__file__).parent / "ansible_playbook.py"
+    path = Path(__file__).parent / "scripts/ansible_playbook.py"
     if not path.exists():
         raise FileNotFoundError(path)
 
@@ -126,7 +126,7 @@ def get_ansible_vault_bin() -> Path:
     Returns:
         A python entrypoint.
     """
-    path = Path(__file__).parent / "ansible_vault.py"
+    path = Path(__file__).parent / "scripts/ansible_vault.py"
     if not path.exists():
         raise FileNotFoundError(path)
 

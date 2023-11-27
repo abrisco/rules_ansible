@@ -18,7 +18,7 @@ bzl_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//ansible/private:bzl_lib",
+        "//private:bzl_lib",
     ],
 )
 
@@ -41,6 +41,6 @@ toolchain_type(
 
 alias(
     name = "lint",
-    actual = "//ansible/private:ansible_lint_runner",
+    actual = "//private:ansible_lint_runner",
     tags = ["manual"],
 )
