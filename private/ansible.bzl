@@ -1,6 +1,6 @@
 """Ansible rules"""
 
-load("//ansible/private/utils:utils.bzl", "py_binary_wrapper")
+load("//private/utils:utils.bzl", "py_binary_wrapper")
 
 AnsiblePlaybookInfo = provider(
     doc = "Infomation describing components of an Ansible playbook.",
@@ -201,13 +201,13 @@ ansible_playbook = rule(
             doc = "A utility binary for copying vault files.",
             cfg = "exec",
             executable = True,
-            default = Label("//ansible/private/utils:copier"),
+            default = Label("//private/utils:copier"),
         ),
         "_launcher": attr.label(
             doc = "The process wrapper for launching `ansible-playbook`",
             cfg = "target",
             executable = True,
-            default = Label("//ansible/private:ansible_launcher"),
+            default = Label("//private:ansible_launcher"),
         ),
     },
     executable = True,

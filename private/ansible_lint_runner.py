@@ -5,7 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-import rules_ansible.ansible.private.ansible_lint_process_wrapper as ansible_lint
+import rules_ansible.private.ansible_lint_process_wrapper as ansible_lint
 
 
 def main() -> None:

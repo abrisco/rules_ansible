@@ -178,10 +178,11 @@ def load_entrypoints() -> Dict[str, str]:
     """
     lookup = bazel_sandbox_path
     entrypoints = {
-        "ansible": "ansible/private/ansible.py",
-        "ansible-config": "ansible/private/ansible_config.py",
-        "ansible-playbook": "ansible/private/ansible_playbook.py",
-        "ansible-doc": "ansible/private/ansible_doc.py",
+        "ansible-config": "private/scripts/ansible_config.py",
+        "ansible-doc": "private/scripts/ansible_doc.py",
+        "ansible-galaxy": "private/scripts/ansible_galaxy.py",
+        "ansible-playbook": "private/scripts/ansible_playbook.py",
+        "ansible": "private/scripts/ansible.py",
     }
 
     # Convert to runfiles path
@@ -209,8 +210,7 @@ def write_entrypoint(path: Path, content: str) -> None:
 
 
 def lint_main(
-    config: Path,
-    playbook_dir: Path,
+    additional_env: Optional[Dict[str, str]] = None,
     capture_output: bool = True,
     args: Iterable[str] = [],
     temp_dir: Optional[Path] = None,
@@ -218,7 +218,7 @@ def lint_main(
     """The entrypoint for running `ansible-lint` in a Bazel action or test.
 
     Args:
-        config: The path to the ansible config file.
+        additional_env: Additional environment variables to set.
         playbook_dir: The path to the ansible playbook directory.
         capture_output: The value of `subprocess.run.capture_output`.
         args: Arguments to pass to ansible-lint
@@ -257,17 +257,17 @@ def lint_main(
             interpreter.symlink_to(sys.executable)
 
     env = dict(os.environ)
+    if additional_env:
+        env.update(additional_env)
+
     sys_path = str(tmp_path) + os.pathsep + env.get("PATH", "")
     env.update(
         {
             "HOME": str(tmp_path),
             ANSIBLE_LINT_ENTRY_POINT: __file__,
             "PATH": sys_path,
-            "ANSIBLE_CONFIG": str(config),
-            "ANSIBLE_PLAYBOOK_DIR": str(playbook_dir),
         }
     )
-    print(playbook_dir)
 
     lint_args = [
         sys.executable,
@@ -292,9 +292,12 @@ def main() -> None:
         argv = args_file.read_text(encoding="utf-8").splitlines()
     args = parse_args(argv)
 
-    proc = lint_main(
-        config=args.config_file, playbook_dir=args.playbook.parent, args=args.lint_args
-    )
+    env = {
+        "ANSIBLE_CONFIG": str(args.config_file),
+        "ANSIBLE_PLAYBOOK_DIR": str(args.playbook.parent),
+    }
+
+    proc = lint_main(args=args.lint_args, additional_env=env)
 
     if proc.returncode:
         stdout = proc.stdout.decode(encoding="utf-8")
