@@ -19,6 +19,10 @@ env:
 jobs:
   release:
     if: ${{ github.repository_owner == 'abrisco' }}
+    permissions:
+      contents: write
+      actions: write
+      attestations: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -28,16 +32,17 @@ jobs:
         run: |
           version="$(grep 'VERSION =' ./version.bzl | sed 's/VERSION = "//' | sed 's/"//')"
           echo "RELEASE_VERSION=${version}" >> $GITHUB_ENV
+      # Ensure this does not exclude the module used for the .bcr presubmit job.
       - name: Create release artifact
         run: |
-          tar -czf ${{ github.workspace }}/.github/rules_ansible.tar.gz --exclude=".git" --exclude=".github" --exclude="examples" -C ${{ github.workspace }} .
-          sha256="$(shasum --algorithm 256 ${{ github.workspace }}/.github/rules_ansible.tar.gz | awk '{ print $1 }')"
-          echo "ARCHIVE_SHA256=${sha256}" >> $GITHUB_ENV
+          tar -czf ${{ github.workspace }}/.github/rules_ansible.tar.gz --exclude=".git" --exclude=".github" -C ${{ github.workspace }} .
+          sha256_base64="$(shasum --algorithm 256 ${{ github.workspace }}/.github/rules_ansible.tar.gz | awk '{ print $1 }' | xxd -r -p | base64)"
+          echo "ARCHIVE_SHA256_BASE64=${sha256_base64}" >> "${GITHUB_ENV}"
       - name: Generate release notes
         run: |
           # Generate the release notes
           sed 's/{version}/${{env.RELEASE_VERSION}}/g' ${{ github.workspace }}/.github/release_notes.template \
-          | sed 's/{sha256}/${{env.ARCHIVE_SHA256}}/g' \
+          | sed 's#{sha256_base64}#${{ env.ARCHIVE_SHA256_BASE64 }}#g' \
           > ${{ github.workspace }}/.github/release_notes.txt
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -53,6 +58,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.rules_release.outputs.upload_url }}
-          asset_name: rules_ansible-v${{ env.RELEASE_VERSION }}.tar.gz
+          asset_name: rules_ansible-${{ env.RELEASE_VERSION }}.tar.gz
           asset_path: ${{ github.workspace }}/.github/rules_ansible.tar.gz
           asset_content_type: application/gzip

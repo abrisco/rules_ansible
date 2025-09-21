@@ -1,36 +1,45 @@
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@io_bazel_stardoc//stardoc:stardoc.bzl", "stardoc")
+load("@rules_rust_mdbook//:defs.bzl", "mdbook", "mdbook_server")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
-bzl_library(
-    name = "bzl_lib",
-    srcs = [
-        "@bazel_tools//tools:bzl_srcs",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//ansible:bzl_lib",
-    ],
+stardoc(
+    name = "rules",
+    out = "src/rules.md",
+    input = "//ansible:defs.bzl",
+    table_of_contents_template = "@io_bazel_stardoc//stardoc:templates/markdown_tables/table_of_contents.vm",
+    tags = ["manual"],
+    deps = ["//ansible:bzl_lib"],
 )
 
-# stardoc(
-#     name = "docs",
-#     out = "README.md",
-#     input = "//ansible:defs.bzl",
-#     # TODO: https://github.com/bazelbuild/stardoc/issues/110
-#     target_compatible_with = select({
-#         "@platforms//os:windows": ["@platforms//:incompatible"],
-#         "//conditions:default": [],
-#     }),
-#     deps = [":bzl_lib"],
-# )
+mdbook(
+    name = "book",
+    srcs = glob(["src/**/*.md"]) + [
+        ":rules",
+    ],
+    book = "book.toml",
+    # Windows builds are typically super slow in CI so they're avoided.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
 
-# diff_test(
-#     name = "docs_diff_test",
-#     failure_message = "To fix, run 'cp -f ./bazel-bin/docs/README.md ./README.md' from the root of the repo.",
-#     file1 = ":docs",
-#     file2 = "//:README.md",
-#     # TODO: https://github.com/bazelbuild/stardoc/issues/110
-#     target_compatible_with = select({
-#         "@platforms//os:windows": ["@platforms//:incompatible"],
-#         "//conditions:default": [],
-#     }),
-# )
+alias(
+    name = "docs",
+    actual = ":book",
+    tags = ["manual"],
+)
+
+mdbook_server(
+    name = "server",
+    book = ":book",
+    tags = ["manual"],
+)
+
+sh_binary(
+    name = "publish_book",
+    srcs = ["publish_book.sh"],
+    data = [":book"],
+    env = {"BOOK_DIR": "$(rootpath :book)"},
+    tags = ["manual"],
+)

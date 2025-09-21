@@ -1,0 +1,10 @@
+# Python dependencies
+
+ansible>=12
+ansible-lint>=25
+
+# Development dependencies
+black
+isort
+pylint
+mypy

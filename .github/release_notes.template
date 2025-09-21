@@ -1,11 +1,12 @@
 # {version}
 
 ```python
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel//tools/build_defs/repo:http.bzl", "http_archive")
+
 http_archive(
     name = "rules_ansible",
-    sha256 = "{sha256}",
-    urls = ["https://github.com/abrisco/rules_ansible/releases/download/{version}/rules_ansible-v{version}.tar.gz"],
+    integrity = "sha256-{sha256_base64}",
+    urls = ["https://github.com/abrisco/rules_ansible/releases/download/{version}/rules_ansible-{version}.tar.gz"],
 )
 ```
 

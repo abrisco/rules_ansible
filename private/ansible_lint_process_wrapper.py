@@ -1,19 +1,20 @@
-#!/usr/bin/env python3
+"""A process wrapper for running ansible-lint."""
 
 import argparse
+import logging
 import os
 import subprocess
 import sys
 import tempfile
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Dict, Iterable, Optional, Sequence
 
 from ansiblelint.file_utils import Lintable
-from rules_python.python.runfiles import runfiles
+from python.runfiles import Runfiles
 
 ANSIBLE_LINT_ARGS_FILE = "ANSIBLE_LINT_ARGS_FILE"
 ANSIBLE_LINT_ENTRY_POINT = "ANSIBLE_LINT_ENTRY_POINT"
-RUNFILES: Optional[runfiles._Runfiles] = runfiles.Create()
+RUNFILES: Optional[Runfiles] = None
 
 
 def is_test() -> bool:
@@ -28,46 +29,27 @@ def is_test() -> bool:
     return False
 
 
-def bazel_runfiles() -> runfiles._Runfiles:
-    """Get the current runfiles object.
-
-    Returns:
-        The bazel runfiles object.
-    """
-    if not RUNFILES:
-        raise EnvironmentError(
-            "Unable to create runfiles object. Is the script running under Bazel?"
-        )
-
-    return RUNFILES
-
-
-def bazel_runfile_path(value: str) -> Path:
-    """Return the runfile path of a given runfile key
+def _rlocation(rlocationpath: str) -> Path:
+    """Look up a runfile and ensure the file exists
 
     Args:
-        value: The runfile key or `File.short_path` value.
+        rlocationpath: The runfile key
 
     Returns:
-        The runfile path.
+        The requested runifle.
     """
-    if value.startswith("../"):
-        key = value[len("../") :]
-    elif value.startswith("rules_ansible/"):
-        key = value
-    elif value.startswith("external/"):
-        key = value[len("external/") :]
-    else:
-        key = str(PurePosixPath(os.environ["TEST_WORKSPACE"]) / value)
-
-    path = bazel_runfiles().Rlocation(key)
-    if not path:
-        raise ValueError(key)
-
-    return Path(path)
+    if not RUNFILES:
+        raise EnvironmentError("Failed to locate runfiles")
+    runfile = RUNFILES.Rlocation(rlocationpath, os.getenv("TEST_WORKSPACE"))
+    if not runfile:
+        raise FileNotFoundError(f"Failed to find runfile: {rlocationpath}")
+    path = Path(runfile)
+    if not path.exists():
+        raise FileNotFoundError(f"Runfile does not exist: ({rlocationpath}) {path}")
+    return path
 
 
-def bazel_sandbox_path(value: str) -> Path:
+def _execpath(value: str) -> Path:
     """Return the value of a file relative to the cwd
 
     Args:
@@ -93,11 +75,7 @@ def _find_args_file() -> Optional[Path]:
         The path to a uniquely named args file.
     """
     if ANSIBLE_LINT_ARGS_FILE in os.environ:
-        args_file = Path(os.environ[ANSIBLE_LINT_ARGS_FILE])
-        if not args_file.exists():
-            raise FileNotFoundError(args_file)
-
-        return args_file
+        return _rlocation(os.environ[ANSIBLE_LINT_ARGS_FILE])
 
 
 def parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
@@ -111,7 +89,7 @@ def parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser()
 
-    file_type = bazel_runfile_path if is_test() else bazel_sandbox_path
+    file_type = _rlocation if is_test() else _execpath
 
     parser.add_argument(
         "--output",
@@ -176,7 +154,6 @@ def load_entrypoints() -> Dict[str, str]:
     Returns:
         A mapping of entrypoints to their text contents.
     """
-    lookup = bazel_sandbox_path
     entrypoints = {
         "ansible-config": "private/scripts/ansible_config.py",
         "ansible-doc": "private/scripts/ansible_doc.py",
@@ -187,13 +164,19 @@ def load_entrypoints() -> Dict[str, str]:
 
     # Convert to runfiles path
     if is_test():
-        lookup = bazel_runfile_path
-        entrypoints = {
-            name: f"rules_ansible/{path}" for name, path in entrypoints.items()
-        }
+        try:
+            return {
+                name: _rlocation(f"rules_ansible/{path}").read_text(encoding="utf-8")
+                for name, path in entrypoints.items()
+            }
+        except FileNotFoundError:
+            return {
+                name: _rlocation(f"_main/{path}").read_text(encoding="utf-8")
+                for name, path in entrypoints.items()
+            }
 
     return {
-        name: lookup(path).read_text(encoding="utf-8")
+        name: _execpath(path).read_text(encoding="utf-8")
         for name, path in entrypoints.items()
     }
 
@@ -222,7 +205,7 @@ def lint_main(
         playbook_dir: The path to the ansible playbook directory.
         capture_output: The value of `subprocess.run.capture_output`.
         args: Arguments to pass to ansible-lint
-        temp_dir: An optional base directory to use for writing files reqired by
+        temp_dir: An optional base directory to use for writing files required by
             linting. if not set, a temporary directory will be generated separately.
 
     Returns:
@@ -238,23 +221,15 @@ def lint_main(
     tmp_path = Path(tempfile.mkdtemp(dir=dir_prefix)) / "_fakepath"
     tmp_path.mkdir(exist_ok=True, parents=True)
 
-    interp_name = Path(sys.executable).name
-
     for tool, content in load_entrypoints().items():
         entrypoint_content = "\n".join(
             [
-                f"#!/usr/bin/env {interp_name}",
+                f"#!{sys.executable}",
                 content,
             ]
         )
 
         write_entrypoint(tmp_path / tool, entrypoint_content)
-
-    # Create a symlink to the python interpreter
-    for ext in ["", ".exe"]:
-        for name in set(["python3", interp_name]):
-            interpreter = tmp_path / (name + ext)
-            interpreter.symlink_to(sys.executable)
 
     env = dict(os.environ)
     if additional_env:
@@ -285,6 +260,11 @@ def lint_main(
 
 def main() -> None:
     """The main entrypoint of the script"""
+    if "RULES_ANSIBLE_DEBUG" in os.environ:
+        logging.basicConfig(level=logging.DEBUG)
+
+    global RUNFILES
+    RUNFILES = Runfiles.Create()
 
     args_file = _find_args_file()
     argv = None

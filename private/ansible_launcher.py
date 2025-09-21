@@ -1,16 +1,16 @@
-#!/usr/bin/env python
+"""The ansible-playbook launcher."""
 
 import json
+import logging
 import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional
 
-from rules_python.python.runfiles import runfiles
+from python.runfiles import Runfiles
 
 ENV_ANSIBLE_BZL_PLAYBOOK = "ANSIBLE_BZL_PLAYBOOK"
-ENV_ANSIBLE_BZL_WORKSPACE_NAME = "ANSIBLE_BZL_WORKSPACE_NAME"
 ENV_ANSIBLE_BZL_PACKAGE = "ANSIBLE_BZL_PACKAGE"
 ENV_ANSIBLE_BZL_ANSIBLE = "ANSIBLE_BZL_ANSIBLE"
 ENV_ANSIBLE_BZL_ANSIBLE_VAULT = "ANSIBLE_BZL_ANSIBLE_VAULT"
@@ -20,43 +20,27 @@ ENV_ANSIBLE_BZL_CONFIG = "ANSIBLE_BZL_CONFIG"
 ENV_ANSIBLE_BZL_LAUNCHER_NAME = "ANSIBLE_BZL_LAUNCHER_NAME"
 ENV_ANSIBLE_BZL_INVENTORY_HOSTS = "ANSIBLE_BZL_INVENTORY_HOSTS"
 
-RUNFILES: Optional[runfiles._Runfiles] = runfiles.Create()
+RUNFILES: Optional[Runfiles] = Runfiles.Create()
 
 
-def bazel_runfiles() -> runfiles._Runfiles:
-    """Get the current runfiles object.
-
-    Returns:
-        The bazel runfiles object.
-    """
-    if not RUNFILES:
-        raise EnvironmentError(
-            "Unable to create runfiles object. Is the script running under Bazel?"
-        )
-
-    return RUNFILES
-
-
-def bazel_runfile_path(value: str) -> Path:
-    """Return the runfile path of a given runfile key
+def _rlocation(rlocationpath: str) -> Path:
+    """Look up a runfile and ensure the file exists
 
     Args:
-        value: The runfile key or `File.short_path` value.
+        rlocationpath: The runfile key
 
     Returns:
-        The runfile path.
+        The requested runifle.
     """
-
-    if value.startswith("../"):
-        key = value[3:]
-    else:
-        key = "{}/{}".format(os.environ[ENV_ANSIBLE_BZL_WORKSPACE_NAME], value)
-
-    path = bazel_runfiles().Rlocation(key)
-    if not path:
-        raise ValueError(key)
-
-    return Path(path)
+    if not RUNFILES:
+        raise EnvironmentError("Failed to locate runfiles")
+    runfile = RUNFILES.Rlocation(rlocationpath, os.getenv("TEST_WORKSPACE"))
+    if not runfile:
+        raise FileNotFoundError(f"Failed to find runfile: {rlocationpath}")
+    path = Path(runfile)
+    if not path.exists():
+        raise FileNotFoundError(f"Runfile does not exist: ({rlocationpath}) {path}")
+    return path
 
 
 def get_playbook() -> Path:
@@ -68,7 +52,7 @@ def get_playbook() -> Path:
     env = os.getenv(ENV_ANSIBLE_BZL_PLAYBOOK)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_PLAYBOOK))
-    return bazel_runfile_path(env)
+    return _rlocation(env)
 
 
 def get_inventory_hosts() -> Path:
@@ -80,7 +64,7 @@ def get_inventory_hosts() -> Path:
     env = os.getenv(ENV_ANSIBLE_BZL_INVENTORY_HOSTS)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_INVENTORY_HOSTS))
-    return bazel_runfile_path(env)
+    return _rlocation(env)
 
 
 def get_ansible_config() -> Path:
@@ -92,7 +76,7 @@ def get_ansible_config() -> Path:
     env = os.getenv(ENV_ANSIBLE_BZL_CONFIG)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_CONFIG))
-    return bazel_runfile_path(env)
+    return _rlocation(env)
 
 
 def get_ansible_package() -> str:
@@ -166,7 +150,7 @@ def get_ansible_vault_files() -> List[str]:
     env = os.getenv(ENV_ANSIBLE_BZL_VAULT_FILES)
     if not env:
         raise EnvironmentError("{} is not set".format(ENV_ANSIBLE_BZL_VAULT_FILES))
-    return [bazel_runfile_path(file) for file in json.loads(env)]
+    return [_rlocation(file) for file in json.loads(env)]
 
 
 def find_vault_key() -> Optional[Path]:
@@ -290,6 +274,10 @@ def run_ansible(
     inventory = get_inventory_hosts()
 
     command = [
+        sys.executable,
+        "-B",  # don't write .pyc files on import; also PYTHONDONTWRITEBYTECODE=x
+        "-s",  # don't add user site directory to sys.path; also PYTHONNOUSERSITE
+        "-P",  # safe paths (available in Python 3.11)
         str(ansible),
         str(playbook),
         f"--inventory={inventory}",
@@ -303,16 +291,19 @@ def run_ansible(
     command.extend(sys.argv[1:])
     command.extend(extra_args)
 
-    env = os.environ.copy()
+    env = dict(os.environ)
     cfg = get_ansible_config()
     if cfg and "ANSIBLE_CONFIG" not in env:
         env.update({"ANSIBLE_CONFIG": str(cfg)})
 
-    os.execve(sys.executable, [sys.executable] + command, env)
+    logging.debug("Running subcommand: %s", " ".join(command))
+    return subprocess.run(command, env=env, check=False)
 
 
 def main() -> None:
     """The main entrypoint of the script."""
+    if "RULES_ANSIBLE_DEBUG" in os.environ:
+        logging.basicConfig(level=logging.DEBUG)
 
     playbook = get_playbook()
     if not playbook.exists():
@@ -327,12 +318,16 @@ def main() -> None:
         vault_key=vault_key,
     )
 
+    logging.debug("Decrypted %s vault files", len(vault_files))
+
     try:
-        run_ansible(
+        result = run_ansible(
             playbook=playbook,
             vault_password_file=vault_key,
             extra_args=get_ansible_args(),
         )
+
+        sys.exit(result.returncode)
     finally:
         delete_files(vault_files)
 

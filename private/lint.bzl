@@ -1,6 +1,12 @@
 """Rules for linting ansible playbooks"""
 
-load("//private/utils:utils.bzl", "py_binary_wrapper")
+load("@rules_venv//python/venv:defs.bzl", "py_venv_common")
+load(
+    "//private/utils:utils.bzl",
+    "ansible_script_main_finder_aspect",
+    "generate_process_wrapper",
+    "get_process_wrapper_attr",
+)
 load(":ansible.bzl", "AnsiblePlaybookInfo")
 
 def _ansible_lint_aspect_impl(target, ctx):
@@ -80,15 +86,22 @@ _ansible_config_finder_aspect = aspect(
     implementation = _ansible_config_finder_aspect_impl,
 )
 
+def _rlocationpath(file, workspace_name):
+    if file.short_path.startswith("../"):
+        return file.short_path[len("../"):]
+
+    return "{}/{}".format(workspace_name, file.short_path)
+
 def _ansible_lint_test_impl(ctx):
+    venv_toolchain = py_venv_common.get_toolchain(ctx)
     playbook_info = ctx.attr.playbook[AnsiblePlaybookInfo]
     config = ctx.attr.playbook[_AnsibleConfigFinderInfo].config
 
     args = []
-    args.extend(["--playbook", playbook_info.playbook.short_path])
+    args.extend(["--playbook", _rlocationpath(playbook_info.playbook, ctx.workspace_name)])
     args.extend(["--package", ctx.attr.playbook.label.package])
-    args.extend(["--config_file", config.short_path])
-    args.extend(["--lint_config_file", ctx.file.config.short_path])
+    args.extend(["--config_file", _rlocationpath(config, ctx.workspace_name)])
+    args.extend(["--lint_config_file", _rlocationpath(ctx.file.config, ctx.workspace_name)])
     args.append("--")
     args.append("--show-relpath")
     args.append("--offline")
@@ -101,10 +114,16 @@ def _ansible_lint_test_impl(ctx):
 
     runfiles = ctx.runfiles(
         files = [args_file, playbook_info.playbook, playbook_info.hosts, ctx.file.config, config],
-        transitive_files = depset(transitive = [playbook_info.inventory, playbook_info.roles]),
+        transitive_files = depset(transitive = [playbook_info.inventory, playbook_info.roles, venv_toolchain.all_files]),
     )
 
-    runner, runfiles = py_binary_wrapper(ctx, ctx.attr._process_wrapper, runfiles)
+    script_info = get_process_wrapper_attr(ctx, "_process_wrapper")
+
+    runner, runfiles = generate_process_wrapper(
+        ctx = ctx,
+        script_info = script_info,
+        runfiles = runfiles,
+    )
 
     return [
         DefaultInfo(
@@ -114,7 +133,7 @@ def _ansible_lint_test_impl(ctx):
         ),
         testing.TestEnvironment(
             environment = {
-                "ANSIBLE_LINT_ARGS_FILE": args_file.short_path,
+                "ANSIBLE_LINT_ARGS_FILE": _rlocationpath(args_file, ctx.workspace_name),
             },
         ),
     ]
@@ -138,8 +157,12 @@ ansible_lint_test = rule(
             doc = "A process wrapper for running `ansible-lint`.",
             cfg = "exec",
             executable = True,
+            aspects = [ansible_script_main_finder_aspect],
             default = Label("//private:ansible_lint_process_wrapper"),
         ),
-    },
+    } | py_venv_common.create_venv_attrs(),
     test = True,
+    toolchains = [
+        py_venv_common.TOOLCHAIN_TYPE,
+    ],
 )
