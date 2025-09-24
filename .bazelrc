@@ -11,6 +11,8 @@ build:ansible_lint --output_groups=+ansible_lint_checks
 
 build:strict --config=ansible_lint
 
+test --config=strict
+
 ###############################################################################
 ## Incompatibility flags
 ###############################################################################

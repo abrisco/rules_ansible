@@ -1,6 +1,6 @@
 """Ansible toolchain definitions"""
 
-load("@rules_python//python:defs.bzl", "PyInfo")
+load("@rules_venv//python:py_info.bzl", "PyInfo")
 
 def _ansible_toolchain_impl(ctx):
     return platform_common.ToolchainInfo(

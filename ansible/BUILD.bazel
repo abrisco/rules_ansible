@@ -2,8 +2,6 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 exports_files(
     [
-        "requirements.in",
-        "requirements.txt",
         "defs.bzl",
         "ansible.cfg",
         ".ansible-lint.yaml",
@@ -13,9 +11,7 @@ exports_files(
 
 bzl_library(
     name = "bzl_lib",
-    srcs = glob(["*.bzl"]) + [
-        "@rules_python//python:bzl",
-    ],
+    srcs = glob(["*.bzl"]),
     visibility = ["//visibility:public"],
     deps = [
         "//private:bzl_lib",

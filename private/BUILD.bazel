@@ -1,5 +1,8 @@
+# Note that `//private` doesn't live in `//ansible` due to the impact on
+# python import paths and the conflict of the `ansible` package.
+
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_venv//python:py_binary.bzl", "py_binary")
 load("//ansible:toolchain.bzl", "current_ansible_toolchain")
 
 current_ansible_toolchain(
@@ -30,11 +33,12 @@ py_binary(
         "scripts/ansible_playbook.py",
         "scripts/ansible_vault.py",
     ],
+    main = "ansible_launcher.py",
     visibility = ["//visibility:public"],
     deps = [
         ":current_ansible",
         ":current_ansible_core",
-        "@rules_python//python/runfiles",
+        "@rules_venv//python/runfiles",
     ],
 )
 
@@ -55,7 +59,7 @@ py_binary(
         ":current_ansible",
         ":current_ansible_core",
         ":current_ansible_lint",
-        "@rules_python//python/runfiles",
+        "@rules_venv//python/runfiles",
     ],
 )
 
@@ -74,5 +78,6 @@ bzl_library(
     visibility = ["//ansible:__pkg__"],
     deps = [
         "//private/utils:bzl_lib",
+        "@rules_venv//python:defs_bzl",
     ],
 )

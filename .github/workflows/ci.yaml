@@ -4,14 +4,11 @@ on:
   push:
     branches:
       - main
+  merge_group:
   pull_request:
     types:
       - opened
       - synchronize
-
-defaults:
-  run:
-    shell: bash
 
 env:
   BAZEL_STARTUP_FLAGS: --bazelrc=${{ github.workspace }}/.github/github.bazelrc
@@ -20,59 +17,41 @@ jobs:
   ci:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: macos-11
-          - os: ubuntu-20.04
+          - os: macos-latest
+          - os: ubuntu-24.04
+          - os: windows-2022
     steps:
       # Checkout the code
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
 
-      # Caches and restores the Bazel outputs.
-      - name: Retain Bazel cache (linux)
-        uses: actions/cache@v2
-        env:
-          cache-name: bazel-cache
-        with:
-          path: |
-            ~/.cache/bazelisk
-            ~/.cache/bazel
-          key: ${{ runner.os }}-${{ env.cache-name }}
-        if: startswith(runner.os, 'Linux')
-      - name: Retain Bazel cache (MacOS)
-        uses: actions/cache@v2
-        env:
-          cache-name: bazel-cache
-        with:
-          path: |
-            ~/.cache/bazelisk
-            /private/var/tmp/_bazel_runner
-          key: ${{ runner.os }}-${{ env.cache-name }}
-        if: startswith(runner.os, 'MacOS')
-      - name: Retain Bazel cache (Windows)
-        uses: actions/cache@v2
-        env:
-          cache-name: bazel-cache
-        with:
-          path: |
-            ~/.cache/bazelisk
-            C:/bzl
-          key: ${{ runner.os }}-${{ env.cache-name }}
+      - name: Setup Bazelrc (Windows)
+        run: |
+          echo "TEMP=$env:RUNNER_TEMP" >> "$env:GITHUB_ENV"
+          echo "TMP=$env:RUNNER_TEMP" >> "$env:GITHUB_ENV"
+          echo "startup --output_user_root=D:/bzl" > ./user.bazelrc
         if: startswith(runner.os, 'Windows')
-
       - name: Setup Bazelrc
         run: |
-          echo "startup --output_user_root=C:/bzl" > ./user.bazelrc
-        if: startswith(runner.os, 'Windows')
+          echo "common --keep_going" >> ./user.bazelrc
 
       # Build and Test the code
-      - name: Test
-        run: |
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            bazel ${BAZEL_STARTUP_FLAGS[@]} test ///...
-          else
-            bazel ${BAZEL_STARTUP_FLAGS[@]} test //...
-          fi
+      - name: Test (Unix)
+        run: bazel ${BAZEL_STARTUP_FLAGS[@]} test //...
+        if: startswith(runner.os, 'Windows') != true
+      - name: Test (Windows)
+        # TODO: https://github.com/abrisco/rules_ansible/issues/26
+        # Windows should be able to run `test` but it's currently not
+        # supported.
+        run: bazel $env:BAZEL_STARTUP_FLAGS build //...
+        if: startswith(runner.os, 'Windows')
 
       - name: Integration tests
         run: |
@@ -85,106 +64,22 @@ jobs:
           fi
         if: startswith(runner.os, 'Linux')
 
-  ci-aspects:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: macos-11
-          - os: ubuntu-20.04
+  ci-format:
+    runs-on: ubuntu-24.04
     steps:
       # Checkout the code
-      - uses: actions/checkout@v2
-
-      # Caches and restores the Bazel outputs.
-      - name: Retain Bazel cache (linux)
-        uses: actions/cache@v2
-        env:
-          cache-name: bazel-cache
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.14.0
         with:
-          path: |
-            ~/.cache/bazelisk
-            ~/.cache/bazel
-          key: ${{ runner.os }}-${{ env.cache-name }}
-        if: startswith(runner.os, 'Linux')
-      - name: Retain Bazel cache (MacOS)
-        uses: actions/cache@v2
-        env:
-          cache-name: bazel-cache
-        with:
-          path: |
-            ~/.cache/bazelisk
-            /private/var/tmp/_bazel_runner
-          key: ${{ runner.os }}-${{ env.cache-name }}
-        if: startswith(runner.os, 'MacOS')
-      - name: Retain Bazel cache (Windows)
-        uses: actions/cache@v2
-        env:
-          cache-name: bazel-cache
-        with:
-          path: |
-            ~/.cache/bazelisk
-            C:/bzl
-          key: ${{ runner.os }}-${{ env.cache-name }}
-        if: startswith(runner.os, 'Windows')
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
 
-      - name: Setup Bazelrc
-        run: |
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            echo "startup --output_user_root=C:/bzl" > ./user.bazelrc
-          fi
-          echo "common --config=strict" >> ./user.bazelrc
-
-      # Build and Test the code
-      - name: Test
-        run: |
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            bazel ${BAZEL_STARTUP_FLAGS[@]} test ///...
-          else
-            bazel ${BAZEL_STARTUP_FLAGS[@]} test //...
-          fi
-
-      - name: Integration tests
-        run: |
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            bazel ${BAZEL_STARTUP_FLAGS[@]} run ////tests:infra_setup
-            bazel ${BAZEL_STARTUP_FLAGS[@]} run ////tests/simple
-          else
-            bazel ${BAZEL_STARTUP_FLAGS[@]} run //tests:infra_setup
-            bazel ${BAZEL_STARTUP_FLAGS[@]} run //tests/simple
-          fi
-        if: startswith(runner.os, 'Linux')
-
-  ci-buildifier:
-    runs-on: ubuntu-20.04
-    steps:
-      # Checkout the code
-      - uses: actions/checkout@v2
-      - name: Download Buildifier
-        run: |
-          wget "https://github.com/bazelbuild/buildtools/releases/download/5.1.0/buildifier-linux-amd64" -O buildifier
-          chmod +x buildifier
       - name: Buildifier
-        run: ./buildifier -lint=warn -mode=check -warnings=all -r ${{ github.workspace }}
-
-  ci-lint:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.11
-      - uses: syphar/restore-virtualenv@v1
-        id: cache-virtualenv
-        with:
-          requirement_files: ansible/requirements.txt
-      - uses: syphar/restore-pip-download-cache@v1
-        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
-      - run: |
-          pip install -r ansible/requirements.txt
-          pip install mypy black isort
-        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
-      - uses: isort/isort-action@v1
-      - uses: rickstaa/action-black@v1
-        with:
-          black_args: ". --check"
+        run: |
+          wget "https://github.com/bazelbuild/buildtools/releases/download/v${BUILDIFIER_VERSION}/buildifier-linux-amd64" -O buildifier
+          chmod +x ./buildifier
+          ./buildifier -lint=warn -mode=check -warnings=all -r ${{ github.workspace }}
+          rm ./buildifier
+        env:
+          BUILDIFIER_VERSION: 8.2.0

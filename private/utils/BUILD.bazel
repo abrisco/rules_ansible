@@ -1,11 +1,10 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load(":utils.bzl", "copier_binary")
 
-copier_binary(
+filegroup(
     name = "copier",
-    is_windows = select({
-        "@platforms//os:windows": True,
-        "//conditions:default": False,
+    srcs = select({
+        "@platforms//os:windows": ["copier.bat"],
+        "//conditions:default": ["copier.sh"],
     }),
     visibility = ["//visibility:public"],
 )

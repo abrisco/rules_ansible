@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+"""An entrypoint for running ansible lint on a directory."""
 
 import os
 import sys
 import tempfile
 from pathlib import Path
 
-import rules_ansible.private.ansible_lint_process_wrapper as ansible_lint
+import private.ansible_lint_process_wrapper as ansible_lint
 
 
 def main() -> None:

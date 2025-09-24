@@ -1,6 +1,12 @@
 """Ansible rules"""
 
-load("//private/utils:utils.bzl", "py_binary_wrapper")
+load("@rules_venv//python/venv:defs.bzl", "py_venv_common")
+load(
+    "//private/utils:utils.bzl",
+    "ansible_script_main_finder_aspect",
+    "generate_process_wrapper",
+    "get_process_wrapper_attr",
+)
 
 AnsiblePlaybookInfo = provider(
     doc = "Infomation describing components of an Ansible playbook.",
@@ -30,6 +36,11 @@ def _label_relativize(file):
 
     return repo_path
 
+def _copy_arg(file, is_windows):
+    if is_windows:
+        return file.path.replace("/", "\\")
+    return file.path
+
 def _vault_copy_action(ctx, file):
     """Spawn an action to copy a vault file.
 
@@ -46,21 +57,21 @@ def _vault_copy_action(ctx, file):
         ctx.label.name,
         _label_relativize(file),
     ))
+    is_windows = ctx.executable._copier.basename.endswith((".bat", ".exe", ".ps1"))
     args = ctx.actions.args()
-    args.add(file)
-    args.add(copy)
+    args.add(_copy_arg(file, is_windows))
+    args.add(_copy_arg(copy, is_windows))
     ctx.actions.run(
         executable = ctx.executable._copier,
         mnemonic = "AnsibleVaultCopier",
         outputs = [copy],
         arguments = [args],
         inputs = [file],
-        # In addition to the security concerns, rationale for the execution requirements can be found here:
-        # https://github.com/bazelbuild/bazel-skylib/blob/1.3.0/rules/private/copy_common.bzl#L18-L54
+        # Rationale for the execution requirements can be found here:
+        # https://github.com/bazelbuild/bazel-skylib/blob/1.8.1/rules/private/copy_common.bzl#L18-L45
         execution_requirements = {
-            "local": "1",
+            "no-cache": "1",
             "no-remote": "1",
-            "no-remote-cache": "1",
         },
     )
     return copy
@@ -81,10 +92,10 @@ def _copy_action(ctx, file, name = None):
         ctx.label.name,
         name or _label_relativize(file),
     ))
-
+    is_windows = ctx.executable._copier.basename.endswith((".bat", ".exe", ".ps1"))
     args = ctx.actions.args()
-    args.add(file)
-    args.add(output)
+    args.add(_copy_arg(file, is_windows))
+    args.add(_copy_arg(output, is_windows))
     ctx.actions.run(
         executable = ctx.executable._copier,
         mnemonic = "AnsibleCopier",
@@ -92,11 +103,12 @@ def _copy_action(ctx, file, name = None):
         arguments = [args],
         inputs = [file],
         # Rationale for the execution requirements can be found here:
-        # https://github.com/bazelbuild/bazel-skylib/blob/1.3.0/rules/private/copy_common.bzl#L18-L54
+        # https://github.com/bazelbuild/bazel-skylib/blob/1.8.1/rules/private/copy_common.bzl#L18-L45
         execution_requirements = {
-            "local": "1",
+            "no-cache": "1",
             "no-remote": "1",
         },
+        use_default_shell_env = True,
     )
 
     return output
@@ -123,7 +135,14 @@ def _copy_inventory_action(ctx, file):
 
     return _copy_action(ctx, file, name)
 
+def _rlocationpath(file, workspace_name):
+    if file.short_path.startswith("../"):
+        return file.short_path[len("../"):]
+
+    return "{}/{}".format(workspace_name, file.short_path)
+
 def _ansible_playbook_impl(ctx):
+    venv_toolchain = py_venv_common.get_toolchain(ctx)
     hosts_file = _copy_inventory_action(ctx, ctx.file.hosts)
     inventory_files = [_copy_inventory_action(ctx, file) for file in ctx.files.inventory]
     role_files = [_copy_action(ctx, file) for file in ctx.files.roles]
@@ -136,18 +155,23 @@ def _ansible_playbook_impl(ctx):
 
     env = {
         "ANSIBLE_BZL_ARGS": json.encode(getattr(ctx.attr, "args", [])),
-        "ANSIBLE_BZL_CONFIG": config.short_path,
-        "ANSIBLE_BZL_INVENTORY_HOSTS": hosts_file.short_path,
+        "ANSIBLE_BZL_CONFIG": _rlocationpath(config, ctx.workspace_name),
+        "ANSIBLE_BZL_INVENTORY_HOSTS": _rlocationpath(hosts_file, ctx.workspace_name),
         "ANSIBLE_BZL_LAUNCHER_NAME": ctx.label.name,
         "ANSIBLE_BZL_PACKAGE": ctx.label.package,
-        "ANSIBLE_BZL_PLAYBOOK": playbook.short_path,
-        "ANSIBLE_BZL_VAULT_FILES": json.encode([file.short_path for file in vault_files]),
-        "ANSIBLE_BZL_WORKSPACE_NAME": ctx.workspace_name,
+        "ANSIBLE_BZL_PLAYBOOK": _rlocationpath(playbook, ctx.workspace_name),
+        "ANSIBLE_BZL_VAULT_FILES": json.encode([_rlocationpath(file, ctx.workspace_name) for file in vault_files]),
     }
 
     data = [playbook, config, hosts_file] + vault_files + inventory_files + role_files
 
-    runner, runfiles = py_binary_wrapper(ctx, ctx.attr._launcher, ctx.runfiles(files = data))
+    script_info = get_process_wrapper_attr(ctx, "_launcher")
+
+    runner, runfiles = generate_process_wrapper(
+        ctx = ctx,
+        script_info = script_info,
+        runfiles = ctx.runfiles(files = data, transitive_files = venv_toolchain.all_files),
+    )
 
     return [
         AnsiblePlaybookInfo(
@@ -194,7 +218,7 @@ ansible_playbook = rule(
             allow_files = True,
         ),
         "vault": attr.label_list(
-            doc = "Vautl files to be decrypted before running",
+            doc = "Vault files to be decrypted before running",
             allow_files = True,
         ),
         "_copier": attr.label(
@@ -207,8 +231,12 @@ ansible_playbook = rule(
             doc = "The process wrapper for launching `ansible-playbook`",
             cfg = "target",
             executable = True,
+            aspects = [ansible_script_main_finder_aspect],
             default = Label("//private:ansible_launcher"),
         ),
-    },
+    } | py_venv_common.create_venv_attrs(),
     executable = True,
+    toolchains = [
+        py_venv_common.TOOLCHAIN_TYPE,
+    ],
 )
