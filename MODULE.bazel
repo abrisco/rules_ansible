@@ -2,7 +2,7 @@
 
 module(
     name = "rules_ansible",
-    version = "0.0.8",
+    version = "0.1.0",
 )
 
 bazel_dep(name = "rules_venv", version = "0.6.0")
